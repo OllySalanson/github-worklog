@@ -94,6 +94,9 @@ h2.month {
 .repo li a:hover { text-decoration: underline; }
 .id { color: var(--muted); font-size: .8rem; margin-left: .35rem; font-variant-numeric: tabular-nums; }
 .empty { color: var(--muted); }
+.other ul { list-style: none; padding-left: 0; }
+.other li { display: flex; align-items: baseline; gap: .6rem; }
+.kind { flex: none; width: 5rem; color: var(--muted); font-size: .8rem; }
 `;
 
 const LOCK_SCRIPT = `
@@ -145,11 +148,36 @@ function renderDay(day) {
       return `<div class="repo"><h4>${escapeHtml(group.label)}</h4><ul>\n${items}\n</ul></div>`;
     })
     .join('\n');
-  const times =
-    day.firstActivity === day.lastActivity
-      ? `Activity at ${day.firstActivity}`
-      : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
-  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${renderStats(day)}<p class="times">${times}</p>\n${groups}\n</section>`;
+  // A day with only other work has no code changes to count or time.
+  let summary = '';
+  if (day.groups.length) {
+    const times =
+      day.firstActivity === day.lastActivity
+        ? `Activity at ${day.firstActivity}`
+        : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
+    summary = `${renderStats(day)}<p class="times">${times}</p>`;
+  }
+  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${summary}\n${groups}${renderActivities(day.activities)}\n</section>`;
+}
+
+function renderActivities(activities) {
+  if (!activities.length) return '';
+  const items = activities
+    .map(
+      (activity) =>
+        `<li><span class="kind">${escapeHtml(activity.label)}</span><span>${escapeHtml(activity.project)}: ${escapeHtml(activity.text)}</span></li>`,
+    )
+    .join('\n');
+  return `\n<div class="repo other"><h4>Other work</h4><ul>\n${items}\n</ul></div>`;
+}
+
+// "12 changes over 5 days", or "12 changes and 3 other activities over 6 days".
+export function pageSummary(days) {
+  const changes = days.reduce((sum, day) => sum + day.groups.reduce((n, group) => n + group.items.length, 0), 0);
+  const activities = days.reduce((sum, day) => sum + day.activities.length, 0);
+  const parts = [`${changes} ${plural(changes, 'change')}`];
+  if (activities) parts.push(`${activities} other ${activities === 1 ? 'activity' : 'activities'}`);
+  return `${parts.join(' and ')} over ${days.length} ${plural(days.length, 'day')}`;
 }
 
 export function renderPage({ title, days, generatedAt, timeZone }) {
@@ -164,8 +192,7 @@ export function renderPage({ title, days, generatedAt, timeZone }) {
     sections.push(renderDay(day));
   }
   const updated = `${longDate(generatedAt, timeZone)} at ${clockTime(generatedAt, timeZone)}`;
-  const count = days.reduce((sum, day) => sum + day.groups.reduce((n, group) => n + group.items.length, 0), 0);
-  const summary = `${count} ${count === 1 ? 'change' : 'changes'} over ${days.length} ${days.length === 1 ? 'day' : 'days'}`;
+  const summary = pageSummary(days);
 
   return `<!doctype html>
 <html lang="en">

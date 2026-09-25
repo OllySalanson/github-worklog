@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 
 const REPO_PATTERN = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,7 +19,10 @@ export async function loadConfig(path) {
   } catch (error) {
     throw new ConfigError(`Config file ${path} is not valid JSON: ${error.message}`);
   }
-  return parseConfig(data);
+  const config = parseConfig(data);
+  // A relative activities path is relative to the config file, not the shell.
+  if (config.activities) config.activities = resolve(dirname(path), config.activities);
+  return config;
 }
 
 export function parseConfig(data) {
@@ -43,6 +47,7 @@ export function parseConfig(data) {
     publishTo = requireString(data, 'publishTo');
     if (!REPO_PATTERN.test(publishTo)) throw new ConfigError('"publishTo" must look like owner/repo.');
   }
+  const activities = data.activities === undefined ? null : requireString(data, 'activities');
   if (!Array.isArray(data.repos) || data.repos.length === 0) {
     throw new ConfigError('"repos" must be a non-empty list of "owner/repo" names.');
   }
@@ -53,7 +58,7 @@ export function parseConfig(data) {
     if (seen.has(key)) throw new ConfigError(`Repo listed twice: ${repo.fullName}`);
     seen.add(key);
   }
-  return { title, author, timeZone, since, publishTo, repos };
+  return { title, author, timeZone, since, publishTo, activities, repos };
 }
 
 function parseRepo(entry) {

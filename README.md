@@ -7,6 +7,7 @@ github-worklog reads the pull requests and commits you made in the repositories 
 - **Per day:** the plain-English title of every merged pull request, grouped by project, each linking to GitHub. Commits pushed straight to the default branch (common before a project starts using pull requests) are listed too.
 - **Day totals:** at the top of each day, the number of tasks completed and the lines of code added and removed, shown the way GitHub shows them: a green `+1,234` and a red `-567`.
 - **Activity times:** the first and last GitHub activity each day. These are clearly labelled as activity times, not hours worked.
+- **Other work:** optionally, work that never becomes code, such as planning, reviews, testing and setting things up, listed under the day it happened from a private file you keep.
 - **Private:** the page is encrypted with your password before it leaves your machine. Only the encrypted page is ever published.
 - **Simple:** one static page that works on a phone, follows the light or dark setting, and loads nothing from anywhere else. No framework, no tracking, no runtime dependencies.
 
@@ -73,6 +74,7 @@ You can also clone this repository and run `node bin/github-worklog.js` with the
 | `publishTo` | no | Repository to publish to, as `owner/repo`. `--repo` on the command line overrides it. |
 | `timeZone` | no | [Time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used to split days and show times. Defaults to `Europe/London`. |
 | `since` | no | First day to include, as `YYYY-MM-DD`. Defaults to the whole history of every repository. |
+| `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. |
 
 ## What counts as work
 
@@ -82,6 +84,28 @@ You can also clone this repository and run `node bin/github-worklog.js` with the
 - **Activity times** for a day run from the earliest to the latest of those events, also counting the commits inside that day's pull requests. They show when work happened on GitHub. They do not show breaks, meetings, or work that never reached GitHub, so they are not hours worked.
 
 Commits are matched to the author through their GitHub account, so commits made with an email address not linked to that account are not counted.
+
+## Other work
+
+Much of the work behind a project never reaches GitHub: planning the next stages, reviewing bug reports, running test rounds, switching things on for real. To show it, keep a private JSON file next to your config and name it in `"activities"`. Each entry is one plain line under the day it happened:
+
+```json
+[
+  { "date": "2026-09-22", "project": "Warehouse", "kind": "reviewing", "text": "reviewed all 28 staff bug reports" },
+  { "date": "2026-09-24", "project": "Warehouse", "kind": "setting-up", "text": "switched on the staff page and its welcome email" }
+]
+```
+
+| Key | Meaning |
+| --- | --- |
+| `date` | The day it happened, as `YYYY-MM-DD`. |
+| `project` | Shown before the line, as in "Warehouse: reviewed all 28 staff bug reports". Any name works; it does not have to be one of the `repos`. |
+| `kind` | One of `planning`, `reviewing`, `testing`, `setting-up` or `other`, shown as a small label: Planning, Reviewing, Testing, Setting up or Other. |
+| `text` | What the time was spent on, in plain words. |
+
+There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
+
+Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Other work never counts towards tasks completed, lines of code or activity times. A day with only other work still appears, without those totals. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
 
 ## How the password lock works
 
@@ -116,7 +140,8 @@ The tests use Node's built-in test runner and need no installs. They run the sam
 | [src/cli.js](src/cli.js) | Command line: `build` and `publish`. |
 | [src/config.js](src/config.js) | Reads and checks the config and password files. |
 | [src/github.js](src/github.js) | Fetches pull requests and commits through `gh api graphql`. |
-| [src/worklog.js](src/worklog.js) | Groups activity into days and tidies titles. |
+| [src/activities.js](src/activities.js) | Reads and checks the optional file of other work. |
+| [src/worklog.js](src/worklog.js) | Groups activity and other work into days and tidies titles. |
 | [src/render.js](src/render.js) | Renders the page. |
 | [src/lock.js](src/lock.js), [src/unlock-client.js](src/unlock-client.js) | Encrypts the page and builds the lock screen that decrypts it. |
 | [src/publish.js](src/publish.js) | Pushes to `gh-pages` and turns on GitHub Pages. |

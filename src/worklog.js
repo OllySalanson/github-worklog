@@ -1,3 +1,5 @@
+import { ACTIVITY_KINDS } from './activities.js';
+
 const CONVENTIONAL_PREFIX = /^(feat|fix|chore|docs|refactor|perf|test|tests|build|ci|style|revert)(\([^)]*\))?!?:\s*/i;
 const TRAILING_PR_NUMBER = /\s*\(#\d+\)$/;
 
@@ -44,19 +46,27 @@ export function dayStats(items) {
 }
 
 // Groups activity into days (newest first), each with its items grouped by
-// repo in config order, its totals and the first and last activity time.
-export function buildDays(items, config) {
+// repo in config order, its totals and the first and last activity time, and
+// then any other work from the activities file, which never counts as a task.
+export function buildDays(items, config, activities = []) {
   const { timeZone, since, repos } = config;
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
   const days = new Map();
+  const dayFor = (key) => {
+    if (!days.has(key)) days.set(key, { date: key, items: [], times: [], activities: [] });
+    return days.get(key);
+  };
 
   for (const item of items) {
     const key = dayKey(item.time, timeZone);
     if (since && key < since) continue;
-    if (!days.has(key)) days.set(key, { date: key, items: [], times: [] });
-    const day = days.get(key);
+    const day = dayFor(key);
     day.items.push(item);
     day.times.push(item.time);
+  }
+  for (const activity of activities) {
+    if (since && activity.date < since) continue;
+    dayFor(activity.date).activities.push({ ...activity, label: ACTIVITY_KINDS[activity.kind] });
   }
 
   // Commits made inside a pull request count towards the activity times of
@@ -84,11 +94,12 @@ export function buildDays(items, config) {
         date: day.date,
         label: longDate(day.date),
         ...dayStats(day.items),
-        firstActivity: clockTime(times[0], timeZone),
-        lastActivity: clockTime(times.at(-1), timeZone),
+        firstActivity: times.length ? clockTime(times[0], timeZone) : null,
+        lastActivity: times.length ? clockTime(times.at(-1), timeZone) : null,
         groups: [...groups.values()].sort(
           (a, b) => (repoOrder.get(a.repo.toLowerCase()) ?? Infinity) - (repoOrder.get(b.repo.toLowerCase()) ?? Infinity),
         ),
+        activities: day.activities,
       };
     });
 }

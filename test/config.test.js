@@ -12,6 +12,7 @@ test('fills in defaults and labels repos from their names', () => {
   assert.equal(config.timeZone, 'Europe/London');
   assert.equal(config.since, null);
   assert.equal(config.publishTo, null);
+  assert.equal(config.activities, null);
   assert.deepEqual(config.repos, [
     { owner: 'acme', name: 'warehouse-app', fullName: 'acme/warehouse-app', label: 'Warehouse App' },
     { owner: 'acme', name: 'help-desk', fullName: 'acme/help-desk', label: 'Support' },
@@ -35,6 +36,7 @@ test('rejects bad configs with a clear message', () => {
     [{ ...base, timeZone: 'Mars/Base' }, /time zone/],
     [{ ...base, since: '1 Jan' }, /"since"/],
     [{ ...base, publishTo: 'nope' }, /"publishTo"/],
+    [{ ...base, activities: '' }, /"activities"/],
   ];
   for (const [data, pattern] of cases) {
     assert.throws(() => parseConfig(data), (error) => error instanceof ConfigError && pattern.test(error.message));
@@ -45,7 +47,11 @@ test('loads a config file and reports unreadable or invalid files', async () => 
   const dir = await mkdtemp(join(tmpdir(), 'worklog-config-'));
   await writeFile(join(dir, 'good.json'), JSON.stringify(base));
   await writeFile(join(dir, 'bad.json'), '{ nope');
+  await writeFile(join(dir, 'relative.json'), JSON.stringify({ ...base, activities: 'private/activities.json' }));
+  await writeFile(join(dir, 'absolute.json'), JSON.stringify({ ...base, activities: '/somewhere/activities.json' }));
   assert.equal((await loadConfig(join(dir, 'good.json'))).title, 'Work');
+  assert.equal((await loadConfig(join(dir, 'relative.json'))).activities, join(dir, 'private/activities.json'));
+  assert.equal((await loadConfig(join(dir, 'absolute.json'))).activities, '/somewhere/activities.json');
   await assert.rejects(loadConfig(join(dir, 'bad.json')), /not valid JSON/);
   await assert.rejects(loadConfig(join(dir, 'missing.json')), /Cannot read config file/);
 });

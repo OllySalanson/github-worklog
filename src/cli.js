@@ -1,10 +1,11 @@
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import { loadActivities } from './activities.js';
 import { ConfigError, loadConfig, readPassword } from './config.js';
 import { fetchActivity, runGh } from './github.js';
 import { lockPage } from './lock.js';
 import { PublishError, publish, runGit } from './publish.js';
-import { renderPage } from './render.js';
+import { pageSummary, renderPage } from './render.js';
 import { buildDays } from './worklog.js';
 
 export const USAGE = `Usage:
@@ -63,6 +64,7 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
 
   try {
     const config = await loadConfig(values.config);
+    const activities = config.activities ? await loadActivities(config.activities) : [];
     const password = await readPassword(values['password-file']);
     if (password.length < MIN_PASSWORD_LENGTH) {
       err(`Warning: the password is shorter than ${MIN_PASSWORD_LENGTH} characters, so the page is easier to crack offline.`);
@@ -79,12 +81,11 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
 
     out(`Reading GitHub activity for ${config.author} in ${config.repos.length} repos...`);
     const items = await fetchActivity(gh, config);
-    const days = buildDays(items, config);
+    const days = buildDays(items, config, activities);
     const html = renderPage({ title: config.title, days, generatedAt: now(), timeZone: config.timeZone });
     // Only the encrypted page ever leaves memory.
     const locked = await lockPage(html, password, { author: config.author });
-    const count = days.reduce((sum, day) => sum + day.groups.reduce((n, group) => n + group.items.length, 0), 0);
-    out(`Found ${count} changes over ${days.length} days.`);
+    out(`Found ${pageSummary(days)}.`);
 
     if (command === 'build') {
       const path = values.out ?? 'worklog.html';

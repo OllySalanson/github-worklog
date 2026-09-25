@@ -19,9 +19,13 @@ test('the page script decrypts with the right password and rejects a wrong one',
 });
 
 test('the lock page gives nothing away', async () => {
-  const page = await lockPage(SECRET, 'pw', { author: 'dev', iterations: 1000 });
-  assert.doesNotMatch(page, /Acme|secret|launch/);
-  assert.doesNotMatch(page, /[^a-z]pw[^a-z]/);
+  const password = 'quiet otter lantern';
+  const page = await lockPage(SECRET, password, { author: 'dev', iterations: 1000 });
+  // The random base64 payload could spell anything, so check the rest of the page.
+  const visible = page.replace(/<script type="application\/json" id="payload">[^<]*<\/script>/, '');
+  assert.notEqual(visible, page);
+  assert.doesNotMatch(visible, /Acme|secret|launch/);
+  assert.ok(!page.includes(password));
   assert.match(page, /<title>Work log<\/title>/);
   assert.match(page, /Remember me on this device/);
   assert.match(page, /autocomplete="current-password"/);

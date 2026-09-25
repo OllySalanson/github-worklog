@@ -34,8 +34,17 @@ export function longDate(value, timeZone = 'UTC') {
   return `${parts.weekday} ${parts.day} ${parts.month} ${parts.year}`;
 }
 
+// Tasks completed and lines added and removed across a day's changes.
+export function dayStats(items) {
+  return {
+    tasks: items.length,
+    additions: items.reduce((sum, item) => sum + (item.additions ?? 0), 0),
+    deletions: items.reduce((sum, item) => sum + (item.deletions ?? 0), 0),
+  };
+}
+
 // Groups activity into days (newest first), each with its items grouped by
-// repo in config order and the first and last activity time that day.
+// repo in config order, its totals and the first and last activity time.
 export function buildDays(items, config) {
   const { timeZone, since, repos } = config;
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
@@ -74,6 +83,7 @@ export function buildDays(items, config) {
       return {
         date: day.date,
         label: longDate(day.date),
+        ...dayStats(day.items),
         firstActivity: clockTime(times[0], timeZone),
         lastActivity: clockTime(times.at(-1), timeZone),
         groups: [...groups.values()].sort(

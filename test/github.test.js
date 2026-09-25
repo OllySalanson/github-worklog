@@ -11,7 +11,7 @@ test('lists merged pull requests by the author and direct commits not covered by
     pageSize: 2,
     pullRequests: {
       'acme/app': [
-        pr(1, 'Mine', '2026-09-01T10:00:00Z', { commitTimes: ['2026-09-01T08:00:00Z'] }),
+        pr(1, 'Mine', '2026-09-01T10:00:00Z', { commitTimes: ['2026-09-01T08:00:00Z'], additions: 1234, deletions: 56 }),
         pr(2, 'Someone else', '2026-09-01T11:00:00Z', { author: 'other' }),
         pr(3, 'Also mine', '2026-09-02T10:00:00Z', { author: 'DEV' }),
       ],
@@ -20,7 +20,7 @@ test('lists merged pull requests by the author and direct commits not covered by
     commits: {
       'acme/app': [
         commit('aaaaaaa111', 'Squashed PR (#1)\n\nbody', '2026-09-01T10:00:00Z', { prStates: ['MERGED'] }),
-        commit('bbbbbbb222', 'Pushed straight to main\n\nMore detail', '2026-08-30T09:00:00Z'),
+        commit('bbbbbbb222', 'Pushed straight to main\n\nMore detail', '2026-08-30T09:00:00Z', { additions: 7, deletions: 3 }),
         commit('ccccccc333', 'Merge branch main', '2026-08-30T09:30:00Z', { parents: 2 }),
         commit('ddddddd444', 'In a closed PR, then pushed', '2026-08-29T09:00:00Z', { prStates: ['CLOSED'] }),
         commit('eeeeeee555', 'Rebased from a merged PR', '2026-09-02T09:00:00Z', { prStates: ['OPEN', 'MERGED'] }),
@@ -37,6 +37,10 @@ test('lists merged pull requests by the author and direct commits not covered by
       { kind: 'commit', id: 'bbbbbbb', title: 'Pushed straight to main', time: '2026-08-30T09:00:00Z', workTimes: [] },
       { kind: 'commit', id: 'ddddddd', title: 'In a closed PR, then pushed', time: '2026-08-29T09:00:00Z', workTimes: [] },
     ],
+  );
+  assert.deepEqual(
+    items.map(({ additions, deletions }) => [additions, deletions]),
+    [[1234, 56], [0, 0], [7, 3], [0, 0]],
   );
   assert.equal(items[2].url, 'https://github.com/acme/app/commit/bbbbbbb222');
   assert.ok(items.every((i) => i.repo === 'acme/app'));

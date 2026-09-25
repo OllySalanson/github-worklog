@@ -27,7 +27,7 @@ const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!, $cursor: Str
     pullRequests(states: MERGED, first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title url mergedAt
+        number title url mergedAt additions deletions
         author { login }
         commits(first: 100) { nodes { commit { authoredDate } } }
       }
@@ -43,7 +43,7 @@ const HISTORY_QUERY = `query($owner: String!, $name: String!, $authorId: ID!, $c
           history(first: 100, after: $cursor, author: {id: $authorId}) {
             pageInfo { hasNextPage endCursor }
             nodes {
-              oid url message authoredDate
+              oid url message authoredDate additions deletions
               parents { totalCount }
               associatedPullRequests(first: 10) { nodes { state } }
             }
@@ -111,6 +111,8 @@ export async function fetchRepoActivity(gh, repo, user) {
       title: pr.title,
       url: pr.url,
       time: pr.mergedAt,
+      additions: pr.additions ?? 0,
+      deletions: pr.deletions ?? 0,
       workTimes: pr.commits.nodes.map((node) => node.commit.authoredDate),
     });
   }
@@ -125,6 +127,8 @@ export async function fetchRepoActivity(gh, repo, user) {
       title: commit.message.split('\n')[0].trim(),
       url: commit.url,
       time: commit.authoredDate,
+      additions: commit.additions ?? 0,
+      deletions: commit.deletions ?? 0,
       workTimes: [],
     });
   }

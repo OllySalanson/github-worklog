@@ -80,8 +80,9 @@ h2.month {
   margin-bottom: .9rem;
 }
 .day h3 { font-size: 1.1rem; margin: 0; }
-.stats { display: flex; flex-wrap: wrap; gap: .15rem .75rem; font-size: .9rem; font-weight: 600; margin: .15rem 0 0; }
-.diff { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats { font-size: .9rem; margin: .2rem 0 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.stats span { display: block; }
+.stats b { font-weight: 600; }
 .added { color: var(--added); }
 .removed { color: var(--removed); }
 .times { color: var(--muted); font-size: .85rem; margin: .1rem 0 .4rem; }
@@ -112,12 +113,17 @@ export function formatCount(value) {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
+function plural(count, word) {
+  return count === 1 ? word : `${word}s`;
+}
+
 function renderStats(day) {
-  const tasks = `${formatCount(day.tasks)} ${day.tasks === 1 ? 'task' : 'tasks'} completed`;
   return (
-    `<p class="stats"><span>${tasks}</span>` +
-    `<span class="diff"><span class="added">+${formatCount(day.additions)}</span> ` +
-    `<span class="removed">-${formatCount(day.deletions)}</span></span></p>`
+    `<p class="stats">` +
+    `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>` +
+    `<span><b class="added">+${formatCount(day.additions)}</b> ${plural(day.additions, 'line')} of code added</span>` +
+    `<span><b class="removed">-${formatCount(day.deletions)}</b> ${plural(day.deletions, 'line')} of code removed</span>` +
+    `</p>`
   );
 }
 

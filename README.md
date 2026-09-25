@@ -51,7 +51,7 @@ You need [Node.js](https://nodejs.org) 20 or newer, `git`, and the [GitHub CLI](
 
    The first publish turns on GitHub Pages for the repository. The page appears at `https://<owner>.github.io/<repo>/` within a minute or two.
 
-5. **Refresh it** whenever you like by running the same command again. It always rebuilds the whole history from GitHub, so there is nothing to keep in sync. To refresh on a schedule, put the command in `cron` or a scheduled task.
+5. **Refresh it** whenever you like by running the same command again. It always rebuilds the whole history from GitHub, so there is nothing to keep in sync. To refresh on a schedule without your computer, see [Publish every evening with GitHub Actions](#publish-every-evening-with-github-actions).
 
 To check the page before publishing, `build` writes the same encrypted page to a local file instead. Open it in a browser and unlock it with your password:
 
@@ -64,6 +64,50 @@ npx github:OllySalanson/github-worklog build \
 
 You can also clone this repository and run `node bin/github-worklog.js` with the same arguments.
 
+## Publish every evening with GitHub Actions
+
+The [Publish work log](.github/workflows/publish.yml) workflow rebuilds and publishes the page every evening at 22:00 UK time, so it stays up to date even when your computer is off. You can also run it by hand from the **Actions** tab (**Publish work log**, then **Run workflow**). It publishes to the repository it runs in, exactly as `publish` does from your machine, so it needs to live in the repository that hosts the page: fork this repository and use the fork as your publishing repository, or copy the workflow and the code into yours.
+
+GitHub's schedules run in UTC, so the workflow is scheduled at both 21:00 and 22:00 UTC, and only the run that is 22:00 in London goes ahead (21:00 UTC during British Summer Time, 22:00 UTC in winter). GitHub can start scheduled runs some minutes late when it is busy. To use another time or time zone, change the `cron` lines and the check in the **When** step.
+
+1. **Turn on GitHub Pages first**, either by running `publish` once from your machine or under **Settings > Pages** (deploy from the `gh-pages` branch). The workflow's own token can update the page but is not allowed to switch Pages on.
+
+2. **Make a read-only token** for reading your repositories. On GitHub, go to **Settings > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token**, and choose:
+
+   | Setting | Value |
+   | --- | --- |
+   | Resource owner | The account or organization that owns the repositories in your config. A token covers one owner, so every repository in `repos` must belong to it. An organization may need to approve the token. |
+   | Expiration | Up to a year. Set a reminder: when it expires, the evening runs fail until you replace the secret. |
+   | Repository access | **Only select repositories**: exactly the ones listed in `repos`. |
+   | Repository permissions | **Contents: Read-only** and **Pull requests: Read-only**. **Metadata: Read-only** is added automatically. Nothing else. |
+
+3. **Add the repository secrets** under **Settings > Secrets and variables > Actions** of the publishing repository, or with the GitHub CLI. Reading each value from a file keeps it out of your shell history and screen:
+
+   | Secret | Required | What it holds |
+   | --- | --- | --- |
+   | `WORKLOG_TOKEN` | yes | The fine-grained token from step 2. |
+   | `WORKLOG_PASSWORD` | yes | The page password. |
+   | `WORKLOG_CONFIG` | yes | The whole [config](#config) file. Its `publishTo` and `activities` are ignored here. |
+   | `WORKLOG_ACTIVITIES` | no | The whole [other work](#other-work) file. Leave it unset for no other work. |
+
+   ```sh
+   gh secret set WORKLOG_TOKEN --repo your-name/github-worklog < token-file
+   gh secret set WORKLOG_PASSWORD --repo your-name/github-worklog < ~/.config/github-worklog/password
+   gh secret set WORKLOG_CONFIG --repo your-name/github-worklog < ~/.config/github-worklog/work.json
+   gh secret set WORKLOG_ACTIVITIES --repo your-name/github-worklog < ~/.config/github-worklog/activities.json
+   ```
+
+   Secrets are not shared with forks, and a repository without `WORKLOG_CONFIG` skips the run with a note.
+
+4. **Run it once by hand** from the **Actions** tab and check the page still unlocks.
+
+The workflow is careful with what it is given:
+
+- The secrets only ever live in environment variables and reach github-worklog through pipes, so nothing private is written to the runner's disk, cached or kept as an artifact. Only the encrypted page leaves the run, as it does from your machine.
+- GitHub hides secrets in the run's log. It cannot recognise the separate parts of a JSON secret, so the workflow also hides every private text value in the config and other work (titles, names, repositories and descriptions) before running anything.
+- Reading uses your read-only token. Publishing uses the run's own `GITHUB_TOKEN`, which can only write to this repository (`contents: write`) and read its Pages setting (`pages: read`).
+- Because your other work now comes from the `WORKLOG_ACTIVITIES` secret, update that secret when you add to your local file, or the evening run shows the older list.
+
 ## Config
 
 | Key | Required | Meaning |
@@ -74,7 +118,7 @@ You can also clone this repository and run `node bin/github-worklog.js` with the
 | `publishTo` | no | Repository to publish to, as `owner/repo`. `--repo` on the command line overrides it. |
 | `timeZone` | no | [Time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used to split days and show times. Defaults to `Europe/London`. |
 | `since` | no | First day to include, as `YYYY-MM-DD`. Defaults to the whole history of every repository. |
-| `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. |
+| `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. `--activities` on the command line overrides it. |
 
 ## What counts as work
 
@@ -147,6 +191,7 @@ The tests use Node's built-in test runner and need no installs. They run the sam
 | [src/render.js](src/render.js) | Renders the page. |
 | [src/lock.js](src/lock.js), [src/unlock-client.js](src/unlock-client.js) | Encrypts the page and builds the lock screen that decrypts it. |
 | [src/publish.js](src/publish.js) | Pushes to `gh-pages` and turns on GitHub Pages. |
+| [.github/workflows/publish.yml](.github/workflows/publish.yml) | Publishes every evening from GitHub Actions. |
 
 ## License
 

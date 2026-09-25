@@ -110,6 +110,51 @@ test('publish pushes the encrypted page to gh-pages and turns on Pages', async (
   assert.doesNotMatch(files, /config|password|\.json/);
 });
 
+test('publish can push with its own token while reading with the GitHub CLI login', async () => {
+  const { configPath, passwordPath, fake, output, deps } = await setup();
+  const remote = await mkdtemp(join(tmpdir(), 'worklog-remote-'));
+  execFileSync('git', ['init', '--quiet', '--bare', remote]);
+  const tokens = [];
+  const gh = (args, options = {}) => {
+    tokens.push({ call: args[1] === 'graphql' ? 'read' : 'pages', token: options.env?.GH_TOKEN });
+    return fake.gh(args, options);
+  };
+  const git = (args, options = {}) => {
+    tokens.push({ call: 'git', token: options.env?.GH_TOKEN });
+    return runGit(args.map((arg) => (arg === 'https://github.com/dev/ci.git' ? remote : arg)), options);
+  };
+  const env = { PATH: process.env.PATH, GITHUB_WORKLOG_PUBLISH_TOKEN: 'publish-secret' };
+
+  const code = await run(['publish', '--config', configPath, '--password-file', passwordPath, '--repo', 'dev/ci'], {
+    ...deps,
+    gh,
+    git,
+    env,
+  });
+  assert.equal(code, 0, output.join('\n'));
+  assert.deepEqual(new Set(tokens.filter((t) => t.call === 'read').map((t) => t.token)), new Set([undefined]));
+  assert.ok(tokens.some((t) => t.call === 'git') && tokens.some((t) => t.call === 'pages'));
+  for (const t of tokens.filter((t) => t.call !== 'read')) assert.equal(t.token, 'publish-secret');
+  assert.doesNotMatch(output.join('\n'), /publish-secret/);
+});
+
+test('--activities replaces the activities file named in the config', async () => {
+  const { dir, passwordPath, output, deps } = await setup();
+  await writeFile(
+    join(dir, 'elsewhere.json'),
+    JSON.stringify([{ date: '2026-09-24', project: 'Warehouse', kind: 'planning', text: 'planned the next stage' }]),
+  );
+  const configPath = join(dir, 'stale-activities.json');
+  await writeFile(configPath, JSON.stringify({ title: 'T', author: 'dev', repos: ['acme/app'], activities: 'gone.json' }));
+  const out = join(dir, 'site.html');
+  const code = await run(
+    ['build', '--config', configPath, '--password-file', passwordPath, '--activities', join(dir, 'elsewhere.json'), '--out', out],
+    deps,
+  );
+  assert.equal(code, 0, output.join('\n'));
+  assert.match(await unlock(await readFile(out, 'utf8')), /Warehouse: planned the next stage/);
+});
+
 test('--repo overrides publishTo, and publish without either is refused', async () => {
   const { configPath, passwordPath, output, deps } = await setup();
   const code = await run(['publish', '--config', configPath, '--password-file', passwordPath], deps);

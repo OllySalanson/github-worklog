@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
 
 // Runs a command and resolves with its stdout.
-export function runCommand(command, args, { input, cwd } = {}) {
+export function runCommand(command, args, { input, cwd, env } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, { cwd, maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(command, args, { cwd, env, maxBuffer: 256 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         const detail = (stderr || error.message).trim();
         const failure = new Error(`${command} failed: ${detail}`);

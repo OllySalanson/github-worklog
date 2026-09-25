@@ -151,9 +151,10 @@ function renderDay(day) {
       return `<div class="repo"><h4>${escapeHtml(group.label)}</h4><ul>\n${items}\n</ul></div>`;
     })
     .join('\n');
-  // A day with only other work has no code changes to count lines of or time.
+  // A day with only other work has no lines of code, and has times only when
+  // its activities recorded them.
   let summary = renderStats(day);
-  if (day.groups.length) {
+  if (day.firstActivity) {
     const times =
       day.firstActivity === day.lastActivity
         ? `Activity at ${day.firstActivity}`
@@ -211,7 +212,7 @@ export function renderPage({ title, days, generatedAt, timeZone }) {
 <header>
 <div class="top"><h1>${escapeHtml(title)}</h1><button type="button" class="lock" id="lock">Lock</button></div>
 <p class="meta">${summary} · Updated ${escapeHtml(updated)}</p>
-<p class="note">Times are the first and last GitHub activity each day, not hours worked.</p>
+<p class="note">Times are the first and last recorded activity each day, not hours worked.</p>
 </header>
 ${sections.join('\n') || '<p class="empty">No activity found yet.</p>'}
 </main>

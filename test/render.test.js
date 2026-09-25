@@ -132,3 +132,26 @@ test('a day with only other work shows its task count but no line totals or time
   assert.doesNotMatch(html, /lines? of code|class="times"|null/);
   assert.match(html, /0 changes and 1 other activity over 1 day/);
 });
+
+test('a day with only other work shows activity times when its entries recorded them', () => {
+  const html = render({
+    days: [
+      {
+        date: '2026-09-24',
+        label: 'Thursday 24 September 2026',
+        tasks: 2,
+        additions: 0,
+        deletions: 0,
+        firstActivity: '09:00',
+        lastActivity: '11:30',
+        groups: [],
+        activities: [{ date: '2026-09-24', project: 'Web', kind: 'testing', label: 'Testing', text: 'test calls' }],
+      },
+    ],
+  });
+  assert.match(
+    html,
+    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>2<\/b> tasks completed<\/span><\/p><p class="times">First activity 09:00 · Last activity 11:30<\/p>\n\n<div class="repo other">/,
+  );
+  assert.doesNotMatch(html, /lines? of code/);
+});

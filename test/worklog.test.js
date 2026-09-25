@@ -141,5 +141,31 @@ test('other work joins its day and counts as a task, and can make a day of its o
     ],
   );
   assert.equal(days[0].label, 'Saturday 26 September 2026');
+  assert.equal(days[0].lastActivity, null);
   assert.deepEqual(days[0].groups, []);
+});
+
+test('the start and end times of other work count towards the day\'s activity times', () => {
+  const activity = (date, extra) => ({ date, project: 'Web', kind: 'testing', text: 'test calls', ...extra });
+  const days = buildDays(
+    [item('acme/web', '2026-09-24T12:00:00Z', 'A')],
+    config,
+    [
+      activity('2026-09-24', { start: '2026-09-24T07:15:00Z', end: '2026-09-24T08:00:00Z' }),
+      activity('2026-09-24', { end: '2026-09-24T16:40:00Z' }),
+      activity('2026-09-24', {}),
+      // Past midnight in London, so it does not stretch the 24th.
+      activity('2026-09-24', { end: '2026-09-24T23:30:00Z' }),
+      activity('2026-09-26', { start: '2026-09-26T09:00:00+01:00' }),
+      activity('2026-09-27', {}),
+    ],
+  );
+  assert.deepEqual(
+    days.map(({ date, tasks, firstActivity, lastActivity }) => ({ date, tasks, firstActivity, lastActivity })),
+    [
+      { date: '2026-09-27', tasks: 1, firstActivity: null, lastActivity: null },
+      { date: '2026-09-26', tasks: 1, firstActivity: '09:00', lastActivity: '09:00' },
+      { date: '2026-09-24', tasks: 5, firstActivity: '08:15', lastActivity: '17:40' },
+    ],
+  );
 });

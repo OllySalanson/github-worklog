@@ -63,6 +63,29 @@ test('build writes only the encrypted page, which unlocks to the work log', asyn
   assert.match(output.join('\n'), /Found 2 changes over 2 days/);
 });
 
+test('build adds other work from the activities file, only inside the encrypted page', async () => {
+  const { dir, output, deps } = await setup();
+  await writeFile(
+    join(dir, 'activities.json'),
+    JSON.stringify([
+      { date: '2026-09-24', project: 'Warehouse', kind: 'reviewing', text: 'reviewed all 28 staff bug reports' },
+      { date: '2026-09-23', project: 'Warehouse', kind: 'testing', text: 'test calls (round 2)' },
+    ]),
+  );
+  const configPath = join(dir, 'with-activities.json');
+  await writeFile(configPath, JSON.stringify({ title: 'Acme work', author: 'dev', repos: ['acme/app'], activities: 'activities.json' }));
+  const out = join(dir, 'site.html');
+  const code = await run(['build', '--config', configPath, '--password-file', join(dir, 'password'), '--out', out], deps);
+  assert.equal(code, 0, output.join('\n'));
+
+  const page = await readFile(out, 'utf8');
+  assert.doesNotMatch(page, /Warehouse|bug reports|test calls/);
+  const html = await unlock(page);
+  assert.match(html, /Thursday 24 September 2026[\s\S]*Add a checkout page[\s\S]*Other work[\s\S]*Reviewing<\/span><span>Warehouse: reviewed all 28 staff bug reports/);
+  assert.match(html, /<h3>Wednesday 23 September 2026<\/h3>\n\n<div class="repo other">[\s\S]*Testing<\/span><span>Warehouse: test calls \(round 2\)/);
+  assert.match(output.join('\n'), /Found 1 change and 2 other activities over 2 days/);
+});
+
 test('publish pushes the encrypted page to gh-pages and turns on Pages', async () => {
   const { configPath, passwordPath, fake, output, deps } = await setup({ publishTo: 'dev/worklog' });
   const remote = await mkdtemp(join(tmpdir(), 'worklog-remote-'));
@@ -111,12 +134,16 @@ test('explains usage mistakes and config errors', async () => {
   assert.equal(await run(['build', '--config', configPath], deps), 2);
   assert.equal(await run(['build', '--nope'], deps), 2);
   assert.equal(await run(['build', '--config', join(dir, 'missing.json'), '--password-file', passwordPath], deps), 1);
+  const noActivities = join(dir, 'no-activities.json');
+  await writeFile(noActivities, JSON.stringify({ title: 'T', author: 'dev', repos: ['acme/app'], activities: 'gone.json' }));
+  assert.equal(await run(['build', '--config', noActivities, '--password-file', passwordPath], deps), 1);
   const text = output.join('\n');
   assert.match(text, /Usage:/);
   assert.match(text, /Unknown command: deploy/);
   assert.match(text, /Both --config and --password-file are required/);
   assert.match(text, /Unknown option '--nope'/);
   assert.match(text, /Cannot read config file/);
+  assert.match(text, /Cannot read activities file .*gone\.json: ENOENT/);
 });
 
 test('reports GitHub failures without a stack trace', async () => {

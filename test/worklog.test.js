@@ -108,3 +108,38 @@ test('each day counts its tasks and totals the lines added and removed', () => {
   );
   assert.deepEqual(dayStats([{}]), { tasks: 1, additions: 0, deletions: 0 });
 });
+
+test('other work joins its day without counting as a task, and can make a day of its own', () => {
+  const activity = (date, text, kind = 'planning') => ({ date, project: 'Web', kind, text });
+  const days = buildDays(
+    [item('acme/web', '2026-09-24T09:00:00Z', 'A', { additions: 10, deletions: 2 })],
+    { ...config, since: '2026-09-01' },
+    [
+      activity('2026-09-24', 'planning the next stages'),
+      activity('2026-09-26', 'test calls', 'testing'),
+      activity('2026-09-24', 'switched on the help page', 'setting-up'),
+      activity('2026-08-31', 'too early'),
+    ],
+  );
+  assert.deepEqual(
+    days.map(({ date, tasks, additions, firstActivity, activities }) => ({
+      date,
+      tasks,
+      additions,
+      firstActivity,
+      activities: activities.map((a) => `${a.label}: ${a.text}`),
+    })),
+    [
+      { date: '2026-09-26', tasks: 0, additions: 0, firstActivity: null, activities: ['Testing: test calls'] },
+      {
+        date: '2026-09-24',
+        tasks: 1,
+        additions: 10,
+        firstActivity: '10:00',
+        activities: ['Planning: planning the next stages', 'Setting up: switched on the help page'],
+      },
+    ],
+  );
+  assert.equal(days[0].label, 'Saturday 26 September 2026');
+  assert.deepEqual(days[0].groups, []);
+});

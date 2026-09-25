@@ -1,0 +1,7 @@
+[
+  { "date": "2026-09-21", "project": "Storefront", "kind": "planning", "text": "planning the next stages" },
+  { "date": "2026-09-22", "project": "Warehouse", "kind": "reviewing", "text": "reviewed all 28 staff bug reports" },
+  { "date": "2026-09-23", "project": "Storefront", "kind": "testing", "text": "test orders on the new checkout (round 2)" },
+  { "date": "2026-09-24", "project": "Warehouse", "kind": "setting-up", "text": "switched on the staff page and its welcome email" },
+  { "date": "2026-09-24", "project": "Storefront", "kind": "other", "text": "wrote a short guide for the shop team" }
+]

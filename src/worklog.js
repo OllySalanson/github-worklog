@@ -47,7 +47,8 @@ export function dayStats(items) {
 
 // Groups activity into days (newest first), each with its items grouped by
 // repo in config order, its totals and the first and last activity time, and
-// then any other work from the activities file, which never counts as a task.
+// then any other work from the activities file. Each activity counts as a task
+// completed, but has no lines of code or activity time.
 export function buildDays(items, config, activities = []) {
   const { timeZone, since, repos } = config;
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
@@ -94,6 +95,7 @@ export function buildDays(items, config, activities = []) {
         date: day.date,
         label: longDate(day.date),
         ...dayStats(day.items),
+        tasks: day.items.length + day.activities.length,
         firstActivity: times.length ? clockTime(times[0], timeZone) : null,
         lastActivity: times.length ? clockTime(times.at(-1), timeZone) : null,
         groups: [...groups.values()].sort(

@@ -109,13 +109,13 @@ test('lists other work after the code changes, with the kind as a plain label', 
   assert.match(html, /2 changes and 2 other activities over 2 days/);
 });
 
-test('a day with only other work shows no code totals or times', () => {
+test('a day with only other work shows its task count but no line totals or times', () => {
   const html = render({
     days: [
       {
         date: '2026-09-24',
         label: 'Thursday 24 September 2026',
-        tasks: 0,
+        tasks: 1,
         additions: 0,
         deletions: 0,
         firstActivity: null,
@@ -127,8 +127,8 @@ test('a day with only other work shows no code totals or times', () => {
   });
   assert.match(
     html,
-    /<h3>Thursday 24 September 2026<\/h3>\n\n<div class="repo other"><h4>Other work<\/h4><ul>\n<li><span class="kind">Testing<\/span><span>Web: test calls \(round 2\)<\/span><\/li>/,
+    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n\n<div class="repo other"><h4>Other work<\/h4><ul>\n<li><span class="kind">Testing<\/span><span>Web: test calls \(round 2\)<\/span><\/li>/,
   );
-  assert.doesNotMatch(html, /class="stats"|class="times"|null/);
+  assert.doesNotMatch(html, /lines? of code|class="times"|null/);
   assert.match(html, /0 changes and 1 other activity over 1 day/);
 });

@@ -5,7 +5,7 @@ Turn your GitHub activity into a simple daily record of work.
 github-worklog reads the pull requests and commits you made in the repositories you choose, groups them by day, and publishes one clean, password-protected web page on GitHub Pages. It is meant to replace a hand-kept "what I did today" file: you, your manager or your client can open one address and see what was done each day, newest first.
 
 - **Per day:** the plain-English title of every merged pull request, grouped by project, each linking to GitHub. Commits pushed straight to the default branch (common before a project starts using pull requests) are listed too.
-- **Day totals:** at the top of each day, the number of tasks completed and the lines of code added and removed, shown the way GitHub shows them: a green `+1,234` and a red `-567`.
+- **Day totals:** at the top of each day, the number of tasks completed (code changes plus other work) and the lines of code added and removed, shown the way GitHub shows them: a green `+1,234` and a red `-567`.
 - **Activity times:** the first and last GitHub activity each day. These are clearly labelled as activity times, not hours worked.
 - **Other work:** optionally, work that never becomes code, such as planning, reviews, testing and setting things up, listed under the day it happened from a private file you keep.
 - **Private:** the page is encrypted with your password before it leaves your machine. Only the encrypted page is ever published.
@@ -105,7 +105,7 @@ Much of the work behind a project never reaches GitHub: planning the next stages
 
 There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
 
-Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Other work never counts towards tasks completed, lines of code or activity times. A day with only other work still appears, without those totals. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
+Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code or activity times. A day with only other work still appears, with its task count but no line totals or times. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
 
 ## How the password lock works
 

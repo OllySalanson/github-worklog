@@ -82,7 +82,8 @@ test('build adds other work from the activities file, only inside the encrypted 
   assert.doesNotMatch(page, /Warehouse|bug reports|test calls/);
   const html = await unlock(page);
   assert.match(html, /Thursday 24 September 2026[\s\S]*Add a checkout page[\s\S]*Other work[\s\S]*Reviewing<\/span><span>Warehouse: reviewed all 28 staff bug reports/);
-  assert.match(html, /<h3>Wednesday 23 September 2026<\/h3>\n\n<div class="repo other">[\s\S]*Testing<\/span><span>Warehouse: test calls \(round 2\)/);
+  assert.match(html, /<h3>Wednesday 23 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n\n<div class="repo other">[\s\S]*Testing<\/span><span>Warehouse: test calls \(round 2\)/);
+  assert.match(html, /<b>2<\/b> tasks completed<\/span><span><b class="added">/);
   assert.match(output.join('\n'), /Found 1 change and 2 other activities over 2 days/);
 });
 

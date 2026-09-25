@@ -120,10 +120,13 @@ function plural(count, word) {
   return count === 1 ? word : `${word}s`;
 }
 
+// Lines of code are only shown for a day with code changes.
 function renderStats(day) {
+  const tasks = `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>`;
+  if (!day.groups.length) return `<p class="stats">${tasks}</p>`;
   return (
     `<p class="stats">` +
-    `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>` +
+    tasks +
     `<span><b class="added">+${formatCount(day.additions)}</b> ${plural(day.additions, 'line')} of code added</span>` +
     `<span><b class="removed">-${formatCount(day.deletions)}</b> ${plural(day.deletions, 'line')} of code removed</span>` +
     `</p>`
@@ -148,14 +151,14 @@ function renderDay(day) {
       return `<div class="repo"><h4>${escapeHtml(group.label)}</h4><ul>\n${items}\n</ul></div>`;
     })
     .join('\n');
-  // A day with only other work has no code changes to count or time.
-  let summary = '';
+  // A day with only other work has no code changes to count lines of or time.
+  let summary = renderStats(day);
   if (day.groups.length) {
     const times =
       day.firstActivity === day.lastActivity
         ? `Activity at ${day.firstActivity}`
         : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
-    summary = `${renderStats(day)}<p class="times">${times}</p>`;
+    summary += `<p class="times">${times}</p>`;
   }
   return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${summary}\n${groups}${renderActivities(day.activities)}\n</section>`;
 }

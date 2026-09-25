@@ -83,9 +83,12 @@ test('heads each day with tasks completed and green and red line counts', () => 
   const html = render();
   assert.match(
     html,
-    /<h3>Friday 25 September 2026<\/h3><p class="stats"><span>1 task completed<\/span><span class="diff"><span class="added">\+1,234<\/span> <span class="removed">-567<\/span>/,
+    /<h3>Friday 25 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><span><b class="added">\+1,234<\/b> lines of code added<\/span><span><b class="removed">-567<\/b> lines of code removed<\/span><\/p>/,
   );
-  assert.match(html, /<span class="added">\+0<\/span> <span class="removed">-3<\/span>/);
-  assert.match(render({ days: [{ ...days[0], tasks: 3 }] }), /3 tasks completed/);
+  assert.match(html, /<b class="added">\+0<\/b> lines of code added<\/span><span><b class="removed">-3<\/b> lines of code removed/);
+  const single = render({ days: [{ ...days[0], tasks: 3, additions: 1, deletions: 1 }] });
+  assert.match(single, /<b>3<\/b> tasks completed/);
+  assert.match(single, /\+1<\/b> line of code added/);
+  assert.match(single, /-1<\/b> line of code removed/);
   assert.match(html, /--added: #1a7f37;[\s\S]*--removed: #d1242f;[\s\S]*--added: #3fb950;[\s\S]*--removed: #f85149;/);
 });

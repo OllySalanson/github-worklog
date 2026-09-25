@@ -1,0 +1,20 @@
+{
+  "name": "github-worklog",
+  "version": "0.1.0",
+  "description": "Turn your GitHub activity into a simple, password-protected daily record of work.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "github-worklog": "bin/github-worklog.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=2"
+  }
+}

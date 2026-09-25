@@ -13,6 +13,22 @@ test('reads a list of activities and trims their words', () => {
     { date: '2026-09-24', project: 'Web', kind: 'setting-up', text: 'switched on the help page' },
   ]);
   assert.deepEqual(parseActivities([], 'a.json'), []);
+  const timed = { ...good, start: '2026-09-24T14:05:00+01:00', end: '2026-09-24T15:30:00Z' };
+  assert.deepEqual(parseActivities([timed], 'a.json')[0], {
+    date: '2026-09-24',
+    project: 'Web',
+    kind: 'setting-up',
+    text: 'switched on the help page',
+    start: '2026-09-24T14:05:00+01:00',
+    end: '2026-09-24T15:30:00Z',
+  });
+  assert.deepEqual(Object.keys(parseActivities([{ ...good, end: '2026-09-24T09:00Z' }], 'a.json')[0]), [
+    'date',
+    'project',
+    'kind',
+    'text',
+    'end',
+  ]);
   assert.deepEqual(Object.values(ACTIVITY_KINDS), ['Planning', 'Reviewing', 'Testing', 'Setting up', 'Other']);
 });
 
@@ -25,6 +41,11 @@ test('rejects bad activities with a message that says which one', () => {
     [[{ ...good, project: ' ' }], /needs a non-empty "project"/],
     [[{ ...good, text: 3 }], /needs a non-empty "text"/],
     [[{ ...good, kind: 'meeting' }], /unknown "kind"; use one of planning, reviewing, testing, setting-up, other/],
+    [[{ ...good, start: '2026-09-24 14:05' }], /has a "start" that is not a time/],
+    [[{ ...good, end: '2026-09-24T14:05:00' }], /has a "end" that is not a time/],
+    [[{ ...good, start: '2026-09-24T25:00:00Z' }], /has a "start" that is not a time/],
+    [[{ ...good, start: 1 }], /has a "start" that is not a time/],
+    [[{ ...good, start: '2026-09-24T15:00:00Z', end: '2026-09-24T14:00:00Z' }], /ends before it starts/],
   ];
   for (const [data, pattern] of cases) {
     assert.throws(() => parseActivities(data, 'a.json'), (error) => error instanceof ConfigError && pattern.test(error.message));

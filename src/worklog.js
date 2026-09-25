@@ -47,7 +47,9 @@ export function dayStats(items) {
 
 // Groups activity into days (newest first), each with its items grouped by
 // repo in config order, its totals and the first and last activity time, and
-// then any other work from the activities file, which never counts as a task.
+// then any other work from the activities file. Each activity counts as a task
+// completed, but has no lines of code, and its optional start and end times
+// count towards the day's activity times.
 export function buildDays(items, config, activities = []) {
   const { timeZone, since, repos } = config;
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
@@ -66,7 +68,13 @@ export function buildDays(items, config, activities = []) {
   }
   for (const activity of activities) {
     if (since && activity.date < since) continue;
-    dayFor(activity.date).activities.push({ ...activity, label: ACTIVITY_KINDS[activity.kind] });
+    const day = dayFor(activity.date);
+    day.activities.push({ ...activity, label: ACTIVITY_KINDS[activity.kind] });
+    // A time only counts on the activity's own day, so work that ran past
+    // midnight cannot give a day a clock time from another day.
+    for (const time of [activity.start, activity.end]) {
+      if (time && dayKey(time, timeZone) === activity.date) day.times.push(time);
+    }
   }
 
   // Commits made inside a pull request count towards the activity times of
@@ -94,6 +102,7 @@ export function buildDays(items, config, activities = []) {
         date: day.date,
         label: longDate(day.date),
         ...dayStats(day.items),
+        tasks: day.items.length + day.activities.length,
         firstActivity: times.length ? clockTime(times[0], timeZone) : null,
         lastActivity: times.length ? clockTime(times.at(-1), timeZone) : null,
         groups: [...groups.values()].sort(

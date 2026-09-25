@@ -11,6 +11,8 @@ export const ACTIVITY_KINDS = {
 };
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// A full ISO timestamp with its offset, such as 2026-09-24T14:05:00+01:00.
+const TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 
 export async function loadActivities(path) {
   let text;
@@ -45,7 +47,18 @@ export function parseActivities(data, path) {
     if (!Object.hasOwn(ACTIVITY_KINDS, entry.kind)) {
       throw new ConfigError(`${where} has an unknown "kind"; use one of ${Object.keys(ACTIVITY_KINDS).join(', ')}.`);
     }
-    return { date, project: entry.project.trim(), kind: entry.kind, text: entry.text.trim() };
+    const activity = { date, project: entry.project.trim(), kind: entry.kind, text: entry.text.trim() };
+    for (const key of ['start', 'end']) {
+      if (entry[key] === undefined) continue;
+      if (typeof entry[key] !== 'string' || !TIME_PATTERN.test(entry[key]) || Number.isNaN(Date.parse(entry[key]))) {
+        throw new ConfigError(`${where} has a "${key}" that is not a time like 2026-01-31T14:05:00Z.`);
+      }
+      activity[key] = entry[key];
+    }
+    if (activity.start && activity.end && Date.parse(activity.end) < Date.parse(activity.start)) {
+      throw new ConfigError(`${where} ends before it starts.`);
+    }
+    return activity;
   });
 }
 

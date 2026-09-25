@@ -120,10 +120,13 @@ function plural(count, word) {
   return count === 1 ? word : `${word}s`;
 }
 
+// Lines of code are only shown for a day with code changes.
 function renderStats(day) {
+  const tasks = `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>`;
+  if (!day.groups.length) return `<p class="stats">${tasks}</p>`;
   return (
     `<p class="stats">` +
-    `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>` +
+    tasks +
     `<span><b class="added">+${formatCount(day.additions)}</b> ${plural(day.additions, 'line')} of code added</span>` +
     `<span><b class="removed">-${formatCount(day.deletions)}</b> ${plural(day.deletions, 'line')} of code removed</span>` +
     `</p>`
@@ -148,14 +151,15 @@ function renderDay(day) {
       return `<div class="repo"><h4>${escapeHtml(group.label)}</h4><ul>\n${items}\n</ul></div>`;
     })
     .join('\n');
-  // A day with only other work has no code changes to count or time.
-  let summary = '';
-  if (day.groups.length) {
+  // A day with only other work has no lines of code, and has times only when
+  // its activities recorded them.
+  let summary = renderStats(day);
+  if (day.firstActivity) {
     const times =
       day.firstActivity === day.lastActivity
         ? `Activity at ${day.firstActivity}`
         : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
-    summary = `${renderStats(day)}<p class="times">${times}</p>`;
+    summary += `<p class="times">${times}</p>`;
   }
   return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${summary}\n${groups}${renderActivities(day.activities)}\n</section>`;
 }
@@ -208,7 +212,7 @@ export function renderPage({ title, days, generatedAt, timeZone }) {
 <header>
 <div class="top"><h1>${escapeHtml(title)}</h1><button type="button" class="lock" id="lock">Lock</button></div>
 <p class="meta">${summary} · Updated ${escapeHtml(updated)}</p>
-<p class="note">Times are the first and last GitHub activity each day, not hours worked.</p>
+<p class="note">Times are the first and last recorded activity each day, not hours worked.</p>
 </header>
 ${sections.join('\n') || '<p class="empty">No activity found yet.</p>'}
 </main>

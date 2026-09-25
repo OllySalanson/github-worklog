@@ -9,8 +9,8 @@ import { pageSummary, renderPage } from './render.js';
 import { buildDays } from './worklog.js';
 
 export const USAGE = `Usage:
-  github-worklog build   --config <file> --password-file <file> [--out <file>]
-  github-worklog publish --config <file> --password-file <file> [--repo <owner/repo>] [--force]
+  github-worklog build   --config <file> --password-file <file> [--activities <file>] [--out <file>]
+  github-worklog publish --config <file> --password-file <file> [--activities <file>] [--repo <owner/repo>] [--force]
 
 Commands:
   build     Write the password-protected page to a local file (default: worklog.html).
@@ -20,15 +20,24 @@ Commands:
 Options:
   --config <file>         JSON config: title, author, repos (see README).
   --password-file <file>  File holding the password. The password is never printed.
+  --activities <file>     File of other work, in place of "activities" in the config.
   --out <file>            build only: where to write the page.
   --repo <owner/repo>     publish only: where to publish (default: "publishTo" in the config).
   --force                 publish only: replace a gh-pages branch github-worklog did not create.
   -h, --help              Show this help.
+
+Environment:
+  GITHUB_WORKLOG_PUBLISH_TOKEN  publish only: push and set up GitHub Pages with this
+                                token instead of the GitHub CLI's login. Reading
+                                activity still uses the GitHub CLI's login.
 `;
 
 const MIN_PASSWORD_LENGTH = 12;
 
-export async function run(argv, { gh = runGh, git = runGit, out = console.log, err = console.error, now = () => new Date() } = {}) {
+export async function run(
+  argv,
+  { gh = runGh, git = runGit, env = process.env, out = console.log, err = console.error, now = () => new Date() } = {},
+) {
   let parsed;
   try {
     parsed = parseArgs({
@@ -37,6 +46,7 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
       options: {
         config: { type: 'string' },
         'password-file': { type: 'string' },
+        activities: { type: 'string' },
         out: { type: 'string' },
         repo: { type: 'string' },
         force: { type: 'boolean', default: false },
@@ -64,7 +74,8 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
 
   try {
     const config = await loadConfig(values.config);
-    const activities = config.activities ? await loadActivities(config.activities) : [];
+    const activitiesPath = values.activities ?? config.activities;
+    const activities = activitiesPath ? await loadActivities(activitiesPath) : [];
     const password = await readPassword(values['password-file']);
     if (password.length < MIN_PASSWORD_LENGTH) {
       err(`Warning: the password is shorter than ${MIN_PASSWORD_LENGTH} characters, so the page is easier to crack offline.`);
@@ -92,7 +103,9 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
       await writeFile(path, locked);
       out(`Wrote the password-protected page to ${path}`);
     } else {
-      const url = await publish({ repo, lockedHtml: locked, force: values.force, git, gh, log: out });
+      const token = env.GITHUB_WORKLOG_PUBLISH_TOKEN;
+      const publishing = token ? { git: withToken(git, env, token), gh: withToken(gh, env, token) } : { git, gh };
+      const url = await publish({ repo, lockedHtml: locked, force: values.force, ...publishing, log: out });
       out(`Published. It can take a minute to update at ${url ?? `the GitHub Pages address of ${repo}`}`);
     }
     return 0;
@@ -105,3 +118,8 @@ export async function run(argv, { gh = runGh, git = runGit, out = console.log, e
     return 1;
   }
 }
+
+// Runs git or gh as the given token: gh reads GH_TOKEN, and git's credential
+// helper is gh itself.
+const withToken = (command, env, token) => (args, options = {}) =>
+  command(args, { ...options, env: { ...env, GH_TOKEN: token } });

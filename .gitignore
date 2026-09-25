@@ -1,0 +1,3 @@
+node_modules/
+# Local build output. It is encrypted, but it has no reason to be in git.
+worklog.html

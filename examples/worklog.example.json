@@ -1,0 +1,11 @@
+{
+  "title": "Acme Co - record of work",
+  "author": "your-github-username",
+  "timeZone": "Europe/London",
+  "since": "2026-01-01",
+  "publishTo": "your-github-username/github-worklog",
+  "repos": [
+    "acme-co/storefront",
+    { "repo": "acme-co/warehouse-app", "name": "Warehouse" }
+  ]
+}

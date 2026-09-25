@@ -5,6 +5,7 @@ Turn your GitHub activity into a simple daily record of work.
 github-worklog reads the pull requests and commits you made in the repositories you choose, groups them by day, and publishes one clean, password-protected web page on GitHub Pages. It is meant to replace a hand-kept "what I did today" file: you, your manager or your client can open one address and see what was done each day, newest first.
 
 - **Per day:** the plain-English title of every merged pull request, grouped by project, each linking to GitHub. Commits pushed straight to the default branch (common before a project starts using pull requests) are listed too.
+- **Day totals:** at the top of each day, the number of tasks completed and the lines of code added and removed, shown the way GitHub shows them: a green `+1,234` and a red `-567`.
 - **Activity times:** the first and last GitHub activity each day. These are clearly labelled as activity times, not hours worked.
 - **Private:** the page is encrypted with your password before it leaves your machine. Only the encrypted page is ever published.
 - **Simple:** one static page that works on a phone, follows the light or dark setting, and loads nothing from anywhere else. No framework, no tracking, no runtime dependencies.
@@ -77,6 +78,7 @@ You can also clone this repository and run `node bin/github-worklog.js` with the
 
 - **Merged pull requests** by the author, on any branch, dated by when they were merged. Titles are tidied into plain English: `fix(calc): stop double counting (#12)` becomes "Stop double counting".
 - **Direct commits** by the author on each repository's default branch that are not part of a merged pull request, dated by when they were written. Merge commits are skipped.
+- **Day totals** count every change listed that day as one task completed. Lines added and removed are the sum of each change's additions and deletions as GitHub reports them: the whole pull request for a pull request, or the commit's own diff for a direct commit. They come in the same GitHub requests as the changes themselves, so they add no extra calls.
 - **Activity times** for a day run from the earliest to the latest of those events, also counting the commits inside that day's pull requests. They show when work happened on GitHub. They do not show breaks, meetings, or work that never reached GitHub, so they are not hours worked.
 
 Commits are matched to the author through their GitHub account, so commits made with an email address not linked to that account are not counted.

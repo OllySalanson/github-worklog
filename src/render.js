@@ -20,6 +20,8 @@ export const BASE_STYLES = `
   --border: #e2e5e9;
   --accent: #0b62c4;
   --danger: #b42318;
+  --added: #1a7f37;
+  --removed: #d1242f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -30,6 +32,8 @@ export const BASE_STYLES = `
     --border: #2c323a;
     --accent: #6cb2ff;
     --danger: #ff8a80;
+    --added: #3fb950;
+    --removed: #f85149;
   }
 }
 * { box-sizing: border-box; }
@@ -76,6 +80,10 @@ h2.month {
   margin-bottom: .9rem;
 }
 .day h3 { font-size: 1.1rem; margin: 0; }
+.stats { display: flex; flex-wrap: wrap; gap: .15rem .75rem; font-size: .9rem; font-weight: 600; margin: .15rem 0 0; }
+.diff { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.added { color: var(--added); }
+.removed { color: var(--removed); }
 .times { color: var(--muted); font-size: .85rem; margin: .1rem 0 .4rem; }
 .repo { margin-top: .75rem; }
 .repo h4 { font-size: .9rem; font-weight: 600; margin: 0 0 .25rem; }
@@ -99,6 +107,20 @@ document.getElementById('lock').addEventListener('click', function () {
 });
 `;
 
+// Numbers as GitHub shows them: 1234 becomes "1,234".
+export function formatCount(value) {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
+function renderStats(day) {
+  const tasks = `${formatCount(day.tasks)} ${day.tasks === 1 ? 'task' : 'tasks'} completed`;
+  return (
+    `<p class="stats"><span>${tasks}</span>` +
+    `<span class="diff"><span class="added">+${formatCount(day.additions)}</span> ` +
+    `<span class="removed">-${formatCount(day.deletions)}</span></span></p>`
+  );
+}
+
 function monthLabel(date) {
   return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(
     new Date(`${date}T12:00:00Z`),
@@ -121,7 +143,7 @@ function renderDay(day) {
     day.firstActivity === day.lastActivity
       ? `Activity at ${day.firstActivity}`
       : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
-  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3><p class="times">${times}</p>\n${groups}\n</section>`;
+  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${renderStats(day)}<p class="times">${times}</p>\n${groups}\n</section>`;
 }
 
 export function renderPage({ title, days, generatedAt, timeZone }) {

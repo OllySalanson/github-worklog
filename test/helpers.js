@@ -44,8 +44,10 @@ export function fakeGh({ login = 'dev', pullRequests = {}, commits = {}, pageSiz
   return { gh, calls, state };
 }
 
-export const pr = (number, title, mergedAt, { author = 'dev', commitTimes = [] } = {}) => ({
+export const pr = (number, title, mergedAt, { author = 'dev', commitTimes = [], additions = 0, deletions = 0 } = {}) => ({
   number,
+  additions,
+  deletions,
   title,
   url: `https://github.com/acme/app/pull/${number}`,
   mergedAt,
@@ -53,8 +55,10 @@ export const pr = (number, title, mergedAt, { author = 'dev', commitTimes = [] }
   commits: { nodes: commitTimes.map((authoredDate) => ({ commit: { authoredDate } })) },
 });
 
-export const commit = (oid, message, authoredDate, { parents = 1, prStates = [] } = {}) => ({
+export const commit = (oid, message, authoredDate, { parents = 1, prStates = [], additions = 0, deletions = 0 } = {}) => ({
   oid,
+  additions,
+  deletions,
   url: `https://github.com/acme/app/commit/${oid}`,
   message,
   authoredDate,

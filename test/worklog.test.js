@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseConfig } from '../src/config.js';
-import { buildDays, cleanTitle, clockTime, dayKey, longDate } from '../src/worklog.js';
+import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate } from '../src/worklog.js';
 
 const config = parseConfig({ title: 'Work', author: 'dev', repos: ['acme/web', { repo: 'acme/api', name: 'API' }] });
 
@@ -88,4 +88,23 @@ test('drops anything before "since"', () => {
     days.map((day) => day.groups[0].items.map((i) => i.title)),
     [['New']],
   );
+});
+
+test('each day counts its tasks and totals the lines added and removed', () => {
+  const days = buildDays(
+    [
+      item('acme/web', '2026-09-24T09:00:00Z', 'A', { additions: 1200, deletions: 40 }),
+      item('acme/api', '2026-09-24T10:00:00Z', 'B', { kind: 'commit', additions: 34, deletions: 527 }),
+      item('acme/web', '2026-09-25T10:00:00Z', 'C', { additions: 5, deletions: 0 }),
+    ],
+    config,
+  );
+  assert.deepEqual(
+    days.map(({ date, tasks, additions, deletions }) => ({ date, tasks, additions, deletions })),
+    [
+      { date: '2026-09-25', tasks: 1, additions: 5, deletions: 0 },
+      { date: '2026-09-24', tasks: 2, additions: 1234, deletions: 567 },
+    ],
+  );
+  assert.deepEqual(dayStats([{}]), { tasks: 1, additions: 0, deletions: 0 });
 });

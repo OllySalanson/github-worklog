@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { escapeHtml, renderPage } from '../src/render.js';
+import { escapeHtml, formatCount, renderPage } from '../src/render.js';
 
 const days = [
   {
     date: '2026-09-25',
     label: 'Friday 25 September 2026',
+    tasks: 1,
+    additions: 1234,
+    deletions: 567,
     firstActivity: '09:05',
     lastActivity: '17:40',
     groups: [
@@ -19,6 +22,9 @@ const days = [
   {
     date: '2026-08-31',
     label: 'Monday 31 August 2026',
+    tasks: 1,
+    additions: 0,
+    deletions: 3,
     firstActivity: '10:00',
     lastActivity: '10:00',
     groups: [{ repo: 'acme/web', label: 'Web', items: [{ id: 'abc1234', title: 'Tidy up', url: 'https://x.test/c' }] }],
@@ -64,4 +70,22 @@ test('is self-contained: no external scripts, styles, fonts or trackers', () => 
 
 test('says so when there is nothing to show', () => {
   assert.match(render({ days: [] }), /0 changes over 0 days[\s\S]*No activity found yet/);
+});
+
+test('formats counts the way GitHub does', () => {
+  assert.equal(formatCount(0), '0');
+  assert.equal(formatCount(999), '999');
+  assert.equal(formatCount(1234), '1,234');
+  assert.equal(formatCount(1234567), '1,234,567');
+});
+
+test('heads each day with tasks completed and green and red line counts', () => {
+  const html = render();
+  assert.match(
+    html,
+    /<h3>Friday 25 September 2026<\/h3><p class="stats"><span>1 task completed<\/span><span class="diff"><span class="added">\+1,234<\/span> <span class="removed">-567<\/span>/,
+  );
+  assert.match(html, /<span class="added">\+0<\/span> <span class="removed">-3<\/span>/);
+  assert.match(render({ days: [{ ...days[0], tasks: 3 }] }), /3 tasks completed/);
+  assert.match(html, /--added: #1a7f37;[\s\S]*--removed: #d1242f;[\s\S]*--added: #3fb950;[\s\S]*--removed: #f85149;/);
 });

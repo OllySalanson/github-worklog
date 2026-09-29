@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { ConfigError, labelFromName, loadConfig, parseConfig, readPassword } from '../src/config.js';
+import { ConfigError, globToRegExp, labelFromName, loadConfig, parseConfig, readPassword } from '../src/config.js';
 
 const base = { title: 'Work', author: 'dev', repos: ['acme/app'] };
 
@@ -14,9 +14,45 @@ test('fills in defaults and labels repos from their names', () => {
   assert.equal(config.publishTo, null);
   assert.equal(config.activities, null);
   assert.deepEqual(config.repos, [
-    { owner: 'acme', name: 'warehouse-app', fullName: 'acme/warehouse-app', label: 'Warehouse App' },
-    { owner: 'acme', name: 'help-desk', fullName: 'acme/help-desk', label: 'Support' },
+    { owner: 'acme', name: 'warehouse-app', fullName: 'acme/warehouse-app', label: 'Warehouse App', projects: [], sharedPaths: [] },
+    { owner: 'acme', name: 'help-desk', fullName: 'acme/help-desk', label: 'Support', projects: [], sharedPaths: [] },
   ]);
+});
+
+test('reads projects within a repo and their file patterns', () => {
+  const config = parseConfig({
+    ...base,
+    repos: [
+      {
+        repo: 'acme/app',
+        projects: [{ name: ' Billing ', paths: ['billing/**', 'docs/billing-*.md'] }],
+        sharedPaths: ['AGENTS.md'],
+      },
+    ],
+  });
+  const [repo] = config.repos;
+  assert.equal(repo.label, 'App');
+  assert.deepEqual(repo.projects.map((project) => project.label), ['Billing']);
+  const [billing, docs] = repo.projects[0].paths;
+  assert.ok(billing.test('billing/invoices/index.ts') && !billing.test('src/billing.ts'));
+  assert.ok(docs.test('docs/billing-runbook.md') && !docs.test('docs/help.md'));
+  assert.ok(repo.sharedPaths[0].test('AGENTS.md') && !repo.sharedPaths[0].test('docs/AGENTS.md'));
+});
+
+test('file patterns match like .gitignore-style globs', () => {
+  const matches = (pattern, path) => globToRegExp(pattern).test(path);
+  assert.ok(matches('supabase/functions/clerk-*/**', 'supabase/functions/clerk-process/index.ts'));
+  assert.ok(matches('supabase/functions/clerk-*/**', 'supabase/functions/clerk-process/deep/a.test.ts'));
+  assert.ok(!matches('supabase/functions/clerk-*/**', 'supabase/functions/quote/clerk-x/index.ts'));
+  assert.ok(matches('supabase/migrations/*_clerk*.sql', 'supabase/migrations/20260731000016_clerk.sql'));
+  assert.ok(!matches('supabase/migrations/*_clerk*.sql', 'supabase/migrations/20260731000016_clerk.sqlx'));
+  assert.ok(matches('**/package.json', 'package.json'));
+  assert.ok(matches('**/package.json', 'apps/web/package.json'));
+  assert.ok(!matches('**/package.json', 'apps/web/package.json.bak'));
+  assert.ok(matches('docs/v?.md', 'docs/v2.md'));
+  assert.ok(!matches('docs/*.md', 'docs/a/b.md'));
+  assert.ok(matches('a+b (1).txt', 'a+b (1).txt'));
+  assert.ok(!matches('a.txt', 'abtxt'));
 });
 
 test('labels keep well-known spellings', () => {
@@ -37,6 +73,14 @@ test('rejects bad configs with a clear message', () => {
     [{ ...base, since: '1 Jan' }, /"since"/],
     [{ ...base, publishTo: 'nope' }, /"publishTo"/],
     [{ ...base, activities: '' }, /"activities"/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [] }] }, /"projects" must be a non-empty list/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ paths: ['a/**'] }] }] }, /non-empty "name"/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: [] }] }] }, /"paths" of project A/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a', ''] }] }] }, /"paths" of project A/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'App', paths: ['a'] }] }] }, /same name as its repo/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a'] }, { name: 'a', paths: ['b'] }] }] }, /listed twice/],
+    [{ ...base, repos: [{ repo: 'acme/app', sharedPaths: ['AGENTS.md'] }] }, /alongside "projects"/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a'] }], sharedPaths: 'x' }] }, /"sharedPaths"/],
   ];
   for (const [data, pattern] of cases) {
     assert.throws(() => parseConfig(data), (error) => error instanceof ConfigError && pattern.test(error.message));
@@ -65,4 +109,13 @@ test('reads the password, dropping only the final newline, and never echoes it',
   assert.equal(await readPassword(join(dir, 'windows')), 'battery staple');
   await assert.rejects(readPassword(join(dir, 'empty')), /is empty/);
   await assert.rejects(readPassword(join(dir, 'missing')), (error) => /ENOENT/.test(error.message));
+});
+
+test('the example config is valid', async () => {
+  const config = await loadConfig(new URL('../examples/worklog.example.json', import.meta.url).pathname);
+  assert.deepEqual(config.repos.map((repo) => [repo.label, repo.projects.map((project) => project.label)]), [
+    ['Storefront', []],
+    ['Warehouse', []],
+    ['Back Office', ['Label Printer']],
+  ]);
 });

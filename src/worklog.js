@@ -45,8 +45,20 @@ export function dayStats(items) {
   };
 }
 
+// The index of the project a change belongs to within its repo: one past the
+// index of the first project whose paths match every file it changed, leaving
+// out the repo's shared files, or 0 for the repo itself. A change that only
+// touched shared files, or whose files were not fetched, stays with the repo.
+export function projectIndex(repo, files) {
+  if (!repo?.projects.length || !files) return 0;
+  const own = files.filter((file) => !repo.sharedPaths.some((path) => path.test(file)));
+  if (!own.length) return 0;
+  const index = repo.projects.findIndex((project) => own.every((file) => project.paths.some((path) => path.test(file))));
+  return index + 1;
+}
+
 // Groups activity into days (newest first), each with its items grouped by
-// repo in config order, its totals and the first and last activity time, and
+// repo, and by project within a repo, in config order, its totals and the first and last activity time, and
 // then any other work from the activities file. Each activity counts as a task
 // completed, but has no lines of code, and its optional start and end times
 // count towards the day's activity times.
@@ -91,12 +103,16 @@ export function buildDays(items, config, activities = []) {
       const times = day.times.map((time) => Date.parse(time)).sort((a, b) => a - b);
       const groups = new Map();
       for (const item of [...day.items].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))) {
-        const key = item.repo.toLowerCase();
+        const repoIndex = repoOrder.get(item.repo.toLowerCase()) ?? Infinity;
+        const repo = repos[repoIndex];
+        const project = projectIndex(repo, item.files);
+        const key = `${item.repo.toLowerCase()}\n${project}`;
         if (!groups.has(key)) {
-          const repo = repos[repoOrder.get(key)];
-          groups.set(key, { repo: item.repo, label: repo?.label ?? item.repo, items: [] });
+          const label = project ? repo.projects[project - 1].label : (repo?.label ?? item.repo);
+          groups.set(key, { repo: item.repo, label, order: [repoIndex, project], items: [] });
         }
-        groups.get(key).items.push({ ...item, title: cleanTitle(item.title) });
+        const { files, ...shown } = item;
+        groups.get(key).items.push({ ...shown, title: cleanTitle(item.title) });
       }
       return {
         date: day.date,
@@ -105,9 +121,9 @@ export function buildDays(items, config, activities = []) {
         tasks: day.items.length + day.activities.length,
         firstActivity: times.length ? clockTime(times[0], timeZone) : null,
         lastActivity: times.length ? clockTime(times.at(-1), timeZone) : null,
-        groups: [...groups.values()].sort(
-          (a, b) => (repoOrder.get(a.repo.toLowerCase()) ?? Infinity) - (repoOrder.get(b.repo.toLowerCase()) ?? Infinity),
-        ),
+        groups: [...groups.values()]
+          .sort((a, b) => a.order[0] - b.order[0] || a.order[1] - b.order[1])
+          .map(({ order, ...group }) => group),
         activities: day.activities,
       };
     });

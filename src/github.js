@@ -22,15 +22,26 @@ export const runGh = (args, options) => runCommand('gh', args, options);
 
 const USER_QUERY = `query($login: String!) { user(login: $login) { id login } }`;
 
-const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!, $cursor: String) {
+// With files, each pull request also lists the files it changed, for repos
+// that split their changes into projects.
+const pullRequestsQuery = (files) => `query($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequests(states: MERGED, first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url mergedAt additions deletions
         author { login }
-        commits(first: 100) { nodes { commit { authoredDate } } }
+        commits(first: 100) { nodes { commit { authoredDate } } }${files ? `
+        files(first: 100) { pageInfo { hasNextPage endCursor } nodes { path } }` : ''}
       }
+    }
+  }
+}`;
+
+const PULL_REQUEST_FILES_QUERY = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      files(first: 100, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { path } }
     }
   }
 }`;
@@ -57,7 +68,8 @@ const HISTORY_QUERY = `query($owner: String!, $name: String!, $authorId: ID!, $c
 export async function graphql(gh, query, variables) {
   const args = ['api', 'graphql', '-f', `query=${query}`];
   for (const [key, value] of Object.entries(variables)) {
-    if (value !== null && value !== undefined) args.push('-f', `${key}=${value}`);
+    // -F sends numbers as numbers; -f sends everything else as a string.
+    if (value !== null && value !== undefined) args.push(typeof value === 'number' ? '-F' : '-f', `${key}=${value}`);
   }
   const response = JSON.parse(await gh(args));
   if (response.errors?.length) {
@@ -72,9 +84,14 @@ export async function fetchUser(gh, login) {
   return data.user;
 }
 
-async function paginate(fetchPage) {
+async function paginate(fetchPage, first = null) {
   const nodes = [];
   let cursor = null;
+  if (first) {
+    nodes.push(...first.nodes);
+    if (!first.pageInfo.hasNextPage) return nodes;
+    cursor = first.pageInfo.endCursor;
+  }
   for (;;) {
     const connection = await fetchPage(cursor);
     if (!connection) return nodes;
@@ -84,14 +101,47 @@ async function paginate(fetchPage) {
   }
 }
 
+// All the files a pull request changed, continuing from the first page that
+// came with the pull request itself.
+async function pullRequestFiles(gh, variables, pr) {
+  const files = await paginate(async (cursor) => {
+    const data = await graphql(gh, PULL_REQUEST_FILES_QUERY, { ...variables, number: pr.number, cursor });
+    return data.repository.pullRequest.files;
+  }, pr.files);
+  return files.map((file) => file.path);
+}
+
+// The files a commit changed. GraphQL does not list them, so this is one REST
+// call per commit (more for a very large one).
+async function commitFiles(gh, repo, oid) {
+  const output = await gh(['api', '--paginate', `repos/${repo.fullName}/commits/${oid}`, '--jq', '.files[].filename']);
+  return output.split('\n').filter(Boolean);
+}
+
+// Runs task over each value, a few at a time, keeping their order.
+async function mapLimit(values, limit, task) {
+  const results = new Array(values.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < values.length) {
+      const index = next++;
+      results[index] = await task(values[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
+  return results;
+}
+
 // Merged pull requests by the author, plus commits the author pushed straight
-// to the default branch that no merged pull request already covers.
+// to the default branch that no merged pull request already covers. For a
+// repo split into projects, each change also lists the files it changed.
 export async function fetchRepoActivity(gh, repo, user) {
   const variables = { owner: repo.owner, name: repo.name };
   const login = user.login.toLowerCase();
+  const withFiles = repo.projects?.length > 0;
 
   const pullRequests = await paginate(async (cursor) => {
-    const data = await graphql(gh, PULL_REQUESTS_QUERY, { ...variables, cursor });
+    const data = await graphql(gh, pullRequestsQuery(withFiles), { ...variables, cursor });
     if (!data.repository) throw new Error(`Repository not found or not accessible: ${repo.fullName}`);
     return data.repository.pullRequests;
   });
@@ -105,6 +155,7 @@ export async function fetchRepoActivity(gh, repo, user) {
   for (const pr of pullRequests) {
     if (pr.author?.login?.toLowerCase() !== login || !pr.mergedAt) continue;
     items.push({
+      ...(withFiles && { files: await pullRequestFiles(gh, variables, pr) }),
       kind: 'pr',
       repo: repo.fullName,
       id: `#${pr.number}`,
@@ -116,11 +167,15 @@ export async function fetchRepoActivity(gh, repo, user) {
       workTimes: pr.commits.nodes.map((node) => node.commit.authoredDate),
     });
   }
-  for (const commit of history) {
+  const commits = history.filter((commit) => {
     const inMergedPr = commit.associatedPullRequests.nodes.some((pr) => pr.state === 'MERGED');
     const isMerge = commit.parents.totalCount > 1;
-    if (inMergedPr || isMerge) continue;
+    return !inMergedPr && !isMerge;
+  });
+  const files = withFiles ? await mapLimit(commits, 8, (commit) => commitFiles(gh, repo, commit.oid)) : [];
+  for (const [index, commit] of commits.entries()) {
     items.push({
+      ...(withFiles && { files: files[index] }),
       kind: 'commit',
       repo: repo.fullName,
       id: commit.oid.slice(0, 7),

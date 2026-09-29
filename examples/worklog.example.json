@@ -7,6 +7,12 @@
   "activities": "activities.example.json",
   "repos": [
     "acme-co/storefront",
-    { "repo": "acme-co/warehouse-app", "name": "Warehouse" }
+    { "repo": "acme-co/warehouse-app", "name": "Warehouse" },
+    {
+      "repo": "acme-co/back-office",
+      "name": "Back Office",
+      "projects": [{ "name": "Label Printer", "paths": ["services/labels/**", "docs/labels-*.md"] }],
+      "sharedPaths": ["AGENTS.md", ".github/**", "**/package.json"]
+    }
   ]
 }

@@ -114,11 +114,35 @@ The workflow is careful with what it is given:
 | --- | --- | --- |
 | `title` | yes | Heading and browser tab title of the unlocked page. |
 | `author` | yes | GitHub username whose work to show. Only pull requests opened by, and commits linked to, this account are listed. |
-| `repos` | yes | Repositories to include, as `"owner/repo"` or `{ "repo": "owner/repo", "name": "Shown name" }`. Without a `name`, `acme-co/warehouse-app` is shown as "Warehouse App". Projects appear in this order within each day. |
+| `repos` | yes | Repositories to include, as `"owner/repo"` or `{ "repo": "owner/repo", "name": "Shown name" }`. Without a `name`, `acme-co/warehouse-app` is shown as "Warehouse App". Projects appear in this order within each day. A repository can also show some of its changes as [separate projects](#projects-within-a-repository). |
 | `publishTo` | no | Repository to publish to, as `owner/repo`. `--repo` on the command line overrides it. |
 | `timeZone` | no | [Time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used to split days and show times. Defaults to `Europe/London`. |
 | `since` | no | First day to include, as `YYYY-MM-DD`. Defaults to the whole history of every repository. |
 | `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. `--activities` on the command line overrides it. |
+
+### Projects within a repository
+
+When one repository holds more than one product, a repository entry can name `projects`, each with the `paths` of its files, to show that product's changes under its own name:
+
+```json
+{
+  "repo": "acme-co/warehouse-app",
+  "name": "Warehouse",
+  "projects": [
+    { "name": "Label Printer", "paths": ["services/labels/**", "docs/labels-*.md"] }
+  ],
+  "sharedPaths": ["AGENTS.md", ".github/**", "**/package.json"]
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `projects` | Projects to show separately, each as `{ "name": "Shown name", "paths": [...] }`. A change is shown under the first project whose `paths` match every file it changed. Any other change stays with the repository's own name. Projects appear straight after their repository. |
+| `sharedPaths` | Optional. Files that changes to any product touch, such as notes, build settings or lock files. They are left out when matching a change to a project, so a project's change can also update them, and a change that touches only them stays with the repository. |
+
+Paths are relative to the root of the repository: `*` matches any part of a file or folder name, `**` matches any number of folders, and `?` matches one character. So `services/labels/**` matches every file under that folder, and `**/package.json` matches every `package.json`.
+
+Deciding this needs the list of files each change touched, which costs more GitHub requests: a little more for pull requests, and one request per direct commit. Only repositories with `projects` make them.
 
 ## What counts as work
 

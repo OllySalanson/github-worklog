@@ -70,7 +70,69 @@ function parseRepo(entry) {
     throw new ConfigError(`Repo "name" must be a non-empty string: ${spec.repo}`);
   }
   const [owner, name] = spec.repo.split('/');
-  return { owner, name, fullName: spec.repo, label: spec.name?.trim() || labelFromName(name) };
+  const label = spec.name?.trim() || labelFromName(name);
+  const projects = spec.projects === undefined ? [] : parseProjects(spec);
+  if (spec.sharedPaths !== undefined && !projects.length) {
+    throw new ConfigError(`Repo "sharedPaths" only applies alongside "projects": ${spec.repo}`);
+  }
+  const sharedPaths = spec.sharedPaths === undefined ? [] : parsePaths(spec.sharedPaths, `"sharedPaths" of ${spec.repo}`);
+  for (const project of projects) {
+    if (project.label.toLowerCase() === label.toLowerCase()) {
+      throw new ConfigError(`Project "${project.label}" has the same name as its repo: ${spec.repo}`);
+    }
+  }
+  return { owner, name, fullName: spec.repo, label, projects, sharedPaths };
+}
+
+// Projects shown separately from the rest of a repo, each chosen by the paths
+// of the files a change touches.
+function parseProjects(spec) {
+  if (!Array.isArray(spec.projects) || spec.projects.length === 0) {
+    throw new ConfigError(`Repo "projects" must be a non-empty list: ${spec.repo}`);
+  }
+  const seen = new Set();
+  return spec.projects.map((project) => {
+    if (!project || typeof project !== 'object' || typeof project.name !== 'string' || !project.name.trim()) {
+      throw new ConfigError(`Each project needs a non-empty "name": ${spec.repo}`);
+    }
+    const label = project.name.trim();
+    if (seen.has(label.toLowerCase())) throw new ConfigError(`Project listed twice in ${spec.repo}: ${label}`);
+    seen.add(label.toLowerCase());
+    return { label, paths: parsePaths(project.paths, `"paths" of project ${label}`) };
+  });
+}
+
+function parsePaths(paths, what) {
+  if (!Array.isArray(paths) || paths.length === 0 || !paths.every((path) => typeof path === 'string' && path.trim())) {
+    throw new ConfigError(`${what} must be a non-empty list of file patterns.`);
+  }
+  return paths.map((path) => globToRegExp(path.trim()));
+}
+
+// A file pattern relative to the repo root: "*" matches within one folder,
+// "**" matches any number of folders and "?" matches one character, so
+// "supabase/functions/clerk-*/**" matches every file under each clerk- folder.
+export function globToRegExp(pattern) {
+  let source = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === '*' && pattern[i + 1] === '*') {
+      i++;
+      if (pattern[i + 1] === '/') {
+        i++;
+        source += '(?:.*/)?';
+      } else {
+        source += '.*';
+      }
+    } else if (char === '*') {
+      source += '[^/]*';
+    } else if (char === '?') {
+      source += '[^/]';
+    } else {
+      source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp(`^${source}$`);
 }
 
 const WORD_SPELLINGS = { github: 'GitHub', gitlab: 'GitLab', api: 'API', ui: 'UI', ios: 'iOS' };

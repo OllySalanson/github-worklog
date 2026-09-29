@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseConfig } from '../src/config.js';
-import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate } from '../src/worklog.js';
+import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate, projectIndex } from '../src/worklog.js';
 
 const config = parseConfig({ title: 'Work', author: 'dev', repos: ['acme/web', { repo: 'acme/api', name: 'API' }] });
 
@@ -63,6 +63,61 @@ test('groups items into days newest first, repos in config order, items oldest f
   );
   assert.equal(older.firstActivity, '09:00');
   assert.equal(older.lastActivity, '11:00');
+});
+
+const split = parseConfig({
+  title: 'Work',
+  author: 'dev',
+  repos: [
+    {
+      repo: 'acme/web',
+      name: 'Web',
+      projects: [
+        { name: 'Billing', paths: ['billing/**', 'docs/billing.md'] },
+        { name: 'Help', paths: ['help/**', 'docs/**'] },
+      ],
+      sharedPaths: ['AGENTS.md', '**/package.json'],
+    },
+    { repo: 'acme/api', name: 'API' },
+  ],
+});
+
+test('a change joins the first project whose paths cover all its files, leaving out shared files', () => {
+  const [web, api] = split.repos;
+  assert.equal(projectIndex(web, ['billing/a.ts', 'docs/billing.md']), 1);
+  assert.equal(projectIndex(web, ['billing/a.ts', 'AGENTS.md', 'billing/package.json']), 1);
+  assert.equal(projectIndex(web, ['docs/billing.md']), 1);
+  assert.equal(projectIndex(web, ['docs/help.md', 'help/b.ts']), 2);
+  assert.equal(projectIndex(web, ['billing/a.ts', 'help/b.ts']), 0);
+  assert.equal(projectIndex(web, ['billing/a.ts', 'src/app.ts']), 0);
+  assert.equal(projectIndex(web, ['AGENTS.md', 'package.json']), 0);
+  assert.equal(projectIndex(web, []), 0);
+  assert.equal(projectIndex(web, undefined), 0);
+  assert.equal(projectIndex(api, ['billing/a.ts']), 0);
+});
+
+test('projects show as their own groups, after their repo and before the next repo', () => {
+  const days = buildDays(
+    [
+      item('acme/api', '2026-09-24T08:00:00Z', 'Api'),
+      item('acme/web', '2026-09-24T09:00:00Z', 'Help page', { files: ['help/b.ts'] }),
+      item('acme/web', '2026-09-24T10:00:00Z', 'Invoices', { files: ['billing/a.ts', 'AGENTS.md'] }),
+      item('acme/web', '2026-09-24T11:00:00Z', 'Everything', { files: ['billing/a.ts', 'src/app.ts'] }),
+      item('acme/web', '2026-09-24T12:00:00Z', 'Refunds', { files: ['billing/b.ts'] }),
+    ],
+    split,
+  );
+  assert.deepEqual(
+    days[0].groups.map((group) => [group.repo, group.label, group.items.map((i) => i.title)]),
+    [
+      ['acme/web', 'Web', ['Everything']],
+      ['acme/web', 'Billing', ['Invoices', 'Refunds']],
+      ['acme/web', 'Help', ['Help page']],
+      ['acme/api', 'API', ['Api']],
+    ],
+  );
+  assert.equal(days[0].tasks, 5);
+  assert.ok(days[0].groups.every((group) => group.items.every((i) => !('files' in i))));
 });
 
 test('commits inside a pull request widen that day\'s activity times, but never add a day', () => {

@@ -7,6 +7,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - The lock page must stay generic (no title or owner details): the publishing repo is public, so anything outside the encrypted payload is public.
 - `src/unlock-client.js` is inlined verbatim into the lock page and also loaded by the tests via `vm`, so it must stay plain browser script with no imports. It must wait for `DOMContentLoaded` before `document.write`, or a remembered key silently fails to open the page.
 - `.github/workflows/publish.yml` runs `publish` nightly from repository secrets: secrets reach the CLI only through `<(...)` pipes (never here-strings or files), private JSON strings are `::add-mask::`ed first, and publishing uses `GITHUB_WORKLOG_PUBLISH_TOKEN` (the run's `GITHUB_TOKEN`) while reading uses `GH_TOKEN`. Test changes to the Publish step's script locally with `build` in place of `publish`.
+- Changed-file lists (for a repo's `projects`) cost extra GitHub calls, one REST call per direct commit, so `src/github.js` fetches them only for repos that set `projects`; `test/github.test.js` asserts other repos make no extra calls.
 - The salt is derived from the author (`saltFor` in `src/lock.js`) so "remember me" survives republishing; the IV is random per build.
 
 ## Maintaining this file

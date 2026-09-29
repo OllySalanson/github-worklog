@@ -56,6 +56,58 @@ test('fails clearly for unknown users and inaccessible repos', async () => {
   await assert.rejects(fetchActivity(fakeGh().gh, config), /not found or not accessible: acme\/app/);
 });
 
+test('lists the files each change touched, only for repos split into projects', async () => {
+  const split = parseConfig({
+    title: 'Work',
+    author: 'dev',
+    repos: ['acme/other', { repo: 'acme/app', projects: [{ name: 'Billing', paths: ['billing/**'] }] }],
+  });
+  const { gh, calls } = fakeGh({
+    filePageSize: 2,
+    pullRequests: {
+      'acme/app': [
+        pr(1, 'Big', '2026-09-01T10:00:00Z', { files: ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'] }),
+        pr(2, 'Small', '2026-09-02T10:00:00Z', { files: ['billing/x.ts'] }),
+        pr(3, 'Not mine', '2026-09-03T10:00:00Z', { author: 'other', files: ['f.ts', 'g.ts', 'h.ts'] }),
+      ],
+      'acme/other': [pr(4, 'Elsewhere', '2026-09-01T10:00:00Z', { files: ['z.ts'] })],
+    },
+    commits: {
+      'acme/app': [
+        commit('aaaaaaa111', 'Direct', '2026-09-04T10:00:00Z'),
+        commit('bbbbbbb222', 'Merge', '2026-09-04T11:00:00Z', { parents: 2 }),
+      ],
+      'acme/other': [commit('ccccccc333', 'Direct elsewhere', '2026-09-04T10:00:00Z')],
+    },
+    commitFiles: { 'acme/app': { aaaaaaa111: ['billing/y.ts', 'docs/y.md'] } },
+  });
+
+  const items = await fetchActivity(gh, split);
+  assert.deepEqual(
+    items.map(({ repo, id, files }) => [repo, id, files]),
+    [
+      ['acme/other', '#4', undefined],
+      ['acme/other', 'ccccccc', undefined],
+      ['acme/app', '#1', ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts']],
+      ['acme/app', '#2', ['billing/x.ts']],
+      ['acme/app', 'aaaaaaa', ['billing/y.ts', 'docs/y.md']],
+    ],
+  );
+  // Only the repo split into projects asks for files: two more pages for the
+  // big pull request, and one REST call for the direct commit.
+  const queries = calls.filter((call) => call.args[1] === 'graphql').map((call) => call.args[3]);
+  assert.equal(queries.filter((query) => query.includes('files(')).length, 3);
+  assert.deepEqual(
+    calls.filter((call) => call.args[1] === '--paginate').map((call) => call.args[2]),
+    ['repos/acme/app/commits/aaaaaaa111'],
+  );
+  const pages = calls.filter((call) => call.args[3].includes('pullRequest(')).map((call) => call.args.slice(-4));
+  assert.deepEqual(pages, [
+    ['-F', 'number=1', '-f', 'cursor=2'],
+    ['-F', 'number=1', '-f', 'cursor=4'],
+  ]);
+});
+
 test('surfaces GraphQL errors', async () => {
   const gh = async () => JSON.stringify({ errors: [{ message: 'rate limited' }, { message: 'try later' }] });
   await assert.rejects(graphql(gh, 'query {}', {}), /rate limited; try later/);
@@ -67,6 +119,6 @@ test('passes variables as strings and leaves out empty ones', async () => {
     seen = args;
     return '{"data":{}}';
   };
-  await graphql(gh, 'query', { owner: 'acme', cursor: null });
-  assert.deepEqual(seen, ['api', 'graphql', '-f', 'query=query', '-f', 'owner=acme']);
+  await graphql(gh, 'query', { owner: 'acme', number: 7, cursor: null });
+  assert.deepEqual(seen, ['api', 'graphql', '-f', 'query=query', '-f', 'owner=acme', '-F', 'number=7']);
 });

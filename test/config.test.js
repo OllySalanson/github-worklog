@@ -37,6 +37,27 @@ test('reads projects within a repo and their file patterns', () => {
   assert.ok(billing.test('billing/invoices/index.ts') && !billing.test('src/billing.ts'));
   assert.ok(docs.test('docs/billing-runbook.md') && !docs.test('docs/help.md'));
   assert.ok(repo.sharedPaths[0].test('AGENTS.md') && !repo.sharedPaths[0].test('docs/AGENTS.md'));
+  assert.deepEqual(repo.projects[0].branches, []);
+});
+
+test('reads branch patterns of a project, with or without paths', () => {
+  const config = parseConfig({
+    ...base,
+    repos: [
+      {
+        repo: 'acme/app',
+        projects: [
+          { name: 'Billing', paths: ['billing/**'], branches: [' fm/billing-* '] },
+          { name: 'Help', branches: ['help/**'] },
+        ],
+      },
+    ],
+  });
+  const [billing, help] = config.repos[0].projects;
+  assert.equal(billing.paths.length, 1);
+  assert.ok(billing.branches[0].test('fm/billing-refunds') && !billing.branches[0].test('fm/rr-billing-refunds'));
+  assert.deepEqual(help.paths, []);
+  assert.ok(help.branches[0].test('help/faq/typos') && !help.branches[0].test('fm/help'));
 });
 
 test('file patterns match like .gitignore-style globs', () => {
@@ -77,6 +98,10 @@ test('rejects bad configs with a clear message', () => {
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ paths: ['a/**'] }] }] }, /non-empty "name"/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: [] }] }] }, /"paths" of project A/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a', ''] }] }] }, /"paths" of project A/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A' }] }] }, /Project A needs "paths", "branches" or both/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', branches: [] }] }] }, /"branches" of project A must be a non-empty list of branch patterns/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', branches: 'fm/a-*' }] }] }, /"branches" of project A/],
+    [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a'], branches: [' '] }] }] }, /"branches" of project A/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'App', paths: ['a'] }] }] }, /same name as its repo/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: ['a'] }, { name: 'a', paths: ['b'] }] }] }, /listed twice/],
     [{ ...base, repos: [{ repo: 'acme/app', sharedPaths: ['AGENTS.md'] }] }, /alongside "projects"/],

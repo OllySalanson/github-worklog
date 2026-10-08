@@ -22,8 +22,8 @@ export const runGh = (args, options) => runCommand('gh', args, options);
 
 const USER_QUERY = `query($login: String!) { user(login: $login) { id login } }`;
 
-// With files, each pull request also lists the files it changed, for repos
-// that split their changes into projects.
+// With files, each pull request also names its branch and lists the files it
+// changed, for repos that split their changes into projects.
 const pullRequestsQuery = (files) => `query($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequests(states: MERGED, first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: ASC}) {
@@ -32,6 +32,7 @@ const pullRequestsQuery = (files) => `query($owner: String!, $name: String!, $cu
         number title url mergedAt additions deletions
         author { login }
         commits(first: 100) { nodes { commit { authoredDate } } }${files ? `
+        headRefName
         files(first: 100) { pageInfo { hasNextPage endCursor } nodes { path } }` : ''}
       }
     }
@@ -134,7 +135,8 @@ async function mapLimit(values, limit, task) {
 
 // Merged pull requests by the author, plus commits the author pushed straight
 // to the default branch that no merged pull request already covers. For a
-// repo split into projects, each change also lists the files it changed.
+// repo split into projects, each change also lists the files it changed, and
+// each pull request names the branch it was made from.
 export async function fetchRepoActivity(gh, repo, user) {
   const variables = { owner: repo.owner, name: repo.name };
   const login = user.login.toLowerCase();
@@ -155,7 +157,7 @@ export async function fetchRepoActivity(gh, repo, user) {
   for (const pr of pullRequests) {
     if (pr.author?.login?.toLowerCase() !== login || !pr.mergedAt) continue;
     items.push({
-      ...(withFiles && { files: await pullRequestFiles(gh, variables, pr) }),
+      ...(withFiles && { files: await pullRequestFiles(gh, variables, pr), branch: pr.headRefName }),
       kind: 'pr',
       repo: repo.fullName,
       id: `#${pr.number}`,

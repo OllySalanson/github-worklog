@@ -96,6 +96,41 @@ test('a change joins the first project whose paths cover all its files, leaving 
   assert.equal(projectIndex(api, ['billing/a.ts']), 0);
 });
 
+const byBranch = parseConfig({
+  title: 'Work',
+  author: 'dev',
+  repos: [
+    {
+      repo: 'acme/web',
+      name: 'Web',
+      projects: [
+        { name: 'Billing', paths: ['billing/**'], branches: ['fm/billing-*'] },
+        { name: 'Help', branches: ['fm/help-*'] },
+      ],
+      sharedPaths: ['AGENTS.md'],
+    },
+  ],
+});
+
+test('a pull request from a matching branch joins that project whatever files it changed', () => {
+  const [web] = byBranch.repos;
+  assert.equal(projectIndex(web, ['billing/a.ts', 'src/app.ts', 'help/b.ts'], 'fm/billing-refunds'), 1);
+  assert.equal(projectIndex(web, ['billing/a.ts'], 'fm/help-faq'), 2);
+  assert.equal(projectIndex(web, ['AGENTS.md'], 'fm/help-faq'), 2);
+  assert.equal(projectIndex(web, undefined, 'fm/help-faq'), 2);
+});
+
+test('without a matching branch a change falls back to its files', () => {
+  const [web] = byBranch.repos;
+  assert.equal(projectIndex(web, ['billing/a.ts'], 'fm/web-tidy'), 1);
+  assert.equal(projectIndex(web, ['billing/a.ts', 'src/app.ts'], 'fm/web-tidy'), 0);
+  assert.equal(projectIndex(web, ['billing/a.ts']), 1);
+  // A project with only branches never takes a change by its files.
+  assert.equal(projectIndex(web, ['help/b.ts'], 'fm/web-tidy'), 0);
+  assert.equal(projectIndex(web, ['src/app.ts'], 'fm/billing'), 0);
+  assert.equal(projectIndex(split.repos[0], ['billing/a.ts', 'src/app.ts'], 'fm/billing-refunds'), 0);
+});
+
 test('projects show as their own groups, after their repo and before the next repo', () => {
   const days = buildDays(
     [
@@ -118,6 +153,24 @@ test('projects show as their own groups, after their repo and before the next re
   );
   assert.equal(days[0].tasks, 5);
   assert.ok(days[0].groups.every((group) => group.items.every((i) => !('files' in i))));
+});
+
+test('pull requests show under the project their branch names, and the branch is not shown', () => {
+  const days = buildDays(
+    [
+      item('acme/web', '2026-09-24T09:00:00Z', 'Refunds email', { files: ['billing/a.ts', 'src/email.ts'], branch: 'fm/billing-email' }),
+      item('acme/web', '2026-09-24T10:00:00Z', 'Tidy', { files: ['billing/a.ts', 'src/email.ts'], branch: 'fm/web-tidy' }),
+    ],
+    byBranch,
+  );
+  assert.deepEqual(
+    days[0].groups.map((group) => [group.label, group.items.map((i) => i.title)]),
+    [
+      ['Web', ['Tidy']],
+      ['Billing', ['Refunds email']],
+    ],
+  );
+  assert.ok(days[0].groups.every((group) => group.items.every((i) => !('branch' in i))));
 });
 
 test('commits inside a pull request widen that day\'s activity times, but never add a day', () => {

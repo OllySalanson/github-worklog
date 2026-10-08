@@ -62,6 +62,32 @@ export function parseActivities(data, path) {
   });
 }
 
+// Other work on or after the given date that has no "start" time, with its
+// place in the file, so the day's first and last activity can miss it.
+export function untimedActivities(activities, from) {
+  if (!from) return [];
+  return activities
+    .map((activity, index) => ({ ...activity, number: index + 1 }))
+    .filter((activity) => activity.date >= from && !activity.start);
+}
+
+// Explains which other work needs a "start" time and how to add one, as the
+// reason publish refuses or as a warning. With showText false the entries are
+// named without any of their words, for logs that others can read.
+export function describeUntimed(untimed, from, where, { refusing = true, showText = true } = {}) {
+  const lines = untimed.map(({ number, date, project, text }) => {
+    const words = text.split(/\s+/);
+    const start = words.slice(0, 6).join(' ') + (words.length > 6 ? '...' : '');
+    return `  - activity ${number}, ${date}, ${project}${showText ? `: "${start}"` : ''}`;
+  });
+  const count = untimed.length === 1 ? '1 piece of other work has' : `${untimed.length} pieces of other work have`;
+  return [
+    `${refusing ? 'Not publishing' : 'Warning'}: ${count} no "start" time, and "requireActivityTimesFrom" in the config asks for one on every entry from ${from}:`,
+    ...lines,
+    `Give each one a "start" (and an "end" if you know it) as an ISO time with its offset, such as "start": "${untimed[0].date}T14:05:00+01:00", in ${where}. ${refusing ? 'Then publish again.' : 'Until then, publish refuses.'}`,
+  ].join('\n');
+}
+
 function isRealDate(date) {
   const parsed = new Date(`${date}T12:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(date);

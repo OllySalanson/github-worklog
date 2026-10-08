@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { loadActivities } from './activities.js';
+import { describeUntimed, loadActivities, untimedActivities } from './activities.js';
 import { ConfigError, loadConfig, readPassword } from './config.js';
 import { fetchActivity, runGh } from './github.js';
 import { lockPage } from './lock.js';
@@ -76,6 +76,16 @@ export async function run(
     const config = await loadConfig(values.config);
     const activitiesPath = values.activities ?? config.activities;
     const activities = activitiesPath ? await loadActivities(activitiesPath) : [];
+    const untimed = untimedActivities(activities, config.requireActivityTimesFrom);
+    if (untimed.length) {
+      const refusing = command === 'publish';
+      // Logs of GitHub Actions runs on a public repository are public too, and
+      // there the activities come through a pipe from a secret, not a file.
+      const actions = env.GITHUB_ACTIONS === 'true';
+      const where = actions ? 'your activities file and the WORKLOG_ACTIVITIES secret' : activitiesPath;
+      err(describeUntimed(untimed, config.requireActivityTimesFrom, where, { refusing, showText: !actions }));
+      if (refusing) return 1;
+    }
     const password = await readPassword(values['password-file']);
     if (password.length < MIN_PASSWORD_LENGTH) {
       err(`Warning: the password is shorter than ${MIN_PASSWORD_LENGTH} characters, so the page is easier to crack offline.`);

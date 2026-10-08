@@ -75,7 +75,7 @@ function parseRepo(entry) {
   if (spec.sharedPaths !== undefined && !projects.length) {
     throw new ConfigError(`Repo "sharedPaths" only applies alongside "projects": ${spec.repo}`);
   }
-  const sharedPaths = spec.sharedPaths === undefined ? [] : parsePaths(spec.sharedPaths, `"sharedPaths" of ${spec.repo}`);
+  const sharedPaths = spec.sharedPaths === undefined ? [] : parsePatterns(spec.sharedPaths, `"sharedPaths" of ${spec.repo}`);
   for (const project of projects) {
     if (project.label.toLowerCase() === label.toLowerCase()) {
       throw new ConfigError(`Project "${project.label}" has the same name as its repo: ${spec.repo}`);
@@ -84,8 +84,8 @@ function parseRepo(entry) {
   return { owner, name, fullName: spec.repo, label, projects, sharedPaths };
 }
 
-// Projects shown separately from the rest of a repo, each chosen by the paths
-// of the files a change touches.
+// Projects shown separately from the rest of a repo, each chosen by the branch
+// a pull request was made from, the paths of the files a change touches, or both.
 function parseProjects(spec) {
   if (!Array.isArray(spec.projects) || spec.projects.length === 0) {
     throw new ConfigError(`Repo "projects" must be a non-empty list: ${spec.repo}`);
@@ -98,20 +98,27 @@ function parseProjects(spec) {
     const label = project.name.trim();
     if (seen.has(label.toLowerCase())) throw new ConfigError(`Project listed twice in ${spec.repo}: ${label}`);
     seen.add(label.toLowerCase());
-    return { label, paths: parsePaths(project.paths, `"paths" of project ${label}`) };
+    if (project.paths === undefined && project.branches === undefined) {
+      throw new ConfigError(`Project ${label} needs "paths", "branches" or both: ${spec.repo}`);
+    }
+    const paths = project.paths === undefined ? [] : parsePatterns(project.paths, `"paths" of project ${label}`);
+    const branches =
+      project.branches === undefined ? [] : parsePatterns(project.branches, `"branches" of project ${label}`, 'branch');
+    return { label, paths, branches };
   });
 }
 
-function parsePaths(paths, what) {
-  if (!Array.isArray(paths) || paths.length === 0 || !paths.every((path) => typeof path === 'string' && path.trim())) {
-    throw new ConfigError(`${what} must be a non-empty list of file patterns.`);
+function parsePatterns(patterns, what, kind = 'file') {
+  if (!Array.isArray(patterns) || patterns.length === 0 || !patterns.every((p) => typeof p === 'string' && p.trim())) {
+    throw new ConfigError(`${what} must be a non-empty list of ${kind} patterns.`);
   }
-  return paths.map((path) => globToRegExp(path.trim()));
+  return patterns.map((pattern) => globToRegExp(pattern.trim()));
 }
 
 // A file pattern relative to the repo root: "*" matches within one folder,
 // "**" matches any number of folders and "?" matches one character, so
 // "supabase/functions/clerk-*/**" matches every file under each clerk- folder.
+// Branch patterns work the same way, so "fm/clerk-*" matches "fm/clerk-send".
 export function globToRegExp(pattern) {
   let source = '';
   for (let i = 0; i < pattern.length; i++) {

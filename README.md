@@ -122,14 +122,18 @@ The workflow is careful with what it is given:
 
 ### Projects within a repository
 
-When one repository holds more than one product, a repository entry can name `projects`, each with the `paths` of its files, to show that product's changes under its own name:
+When one repository holds more than one product, a repository entry can name `projects`, each with the `paths` of its files, the `branches` its pull requests are made from, or both, to show that product's changes under its own name:
 
 ```json
 {
   "repo": "acme-co/warehouse-app",
   "name": "Warehouse",
   "projects": [
-    { "name": "Label Printer", "paths": ["services/labels/**", "docs/labels-*.md"] }
+    {
+      "name": "Label Printer",
+      "paths": ["services/labels/**", "docs/labels-*.md"],
+      "branches": ["labels/*"]
+    }
   ],
   "sharedPaths": ["AGENTS.md", ".github/**", "**/package.json"]
 }
@@ -137,10 +141,12 @@ When one repository holds more than one product, a repository entry can name `pr
 
 | Key | Meaning |
 | --- | --- |
-| `projects` | Projects to show separately, each as `{ "name": "Shown name", "paths": [...] }`. A change is shown under the first project whose `paths` match every file it changed. Any other change stays with the repository's own name. Projects appear straight after their repository. |
+| `projects` | Projects to show separately, each as `{ "name": "Shown name", "paths": [...], "branches": [...] }` with `paths`, `branches` or both. A pull request made from a branch that matches a project's `branches` is shown under that project, whatever files it changed. Any other change is shown under the first project whose `paths` match every file it changed. Anything else stays with the repository's own name. Projects appear straight after their repository. |
 | `sharedPaths` | Optional. Files that changes to any product touch, such as notes, build settings or lock files. They are left out when matching a change to a project, so a project's change can also update them, and a change that touches only them stays with the repository. |
 
-Paths are relative to the root of the repository: `*` matches any part of a file or folder name, `**` matches any number of folders, and `?` matches one character. So `services/labels/**` matches every file under that folder, and `**/package.json` matches every `package.json`.
+Paths are relative to the root of the repository: `*` matches any part of a file or folder name, `**` matches any number of folders, and `?` matches one character. So `services/labels/**` matches every file under that folder, and `**/package.json` matches every `package.json`. Branches match the same way, with `/` separating the parts: `labels/*` matches `labels/new-printer` but not `labels/new/printer`, which `labels/**` would match.
+
+Use `branches` when a product's changes often reach into files that belong to the rest of the repository, so its file paths alone would leave them with the repository. Direct commits have no branch, so only `paths` decide where they go.
 
 Deciding this needs the list of files each change touched, which costs more GitHub requests: a little more for pull requests, and one request per direct commit. Only repositories with `projects` make them.
 

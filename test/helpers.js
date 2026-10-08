@@ -33,8 +33,8 @@ export function fakeGh({
       if (fields.query.includes('pullRequests(')) {
         if (!(repo in pullRequests)) return JSON.stringify({ data: { repository: null } });
         const withFiles = fields.query.includes('files(');
-        const nodes = pullRequests[repo].map(({ changedFiles, ...node }) =>
-          withFiles ? { ...node, files: filesPage(changedFiles, 0) } : node,
+        const nodes = pullRequests[repo].map(({ changedFiles, headRefName, ...node }) =>
+          withFiles ? { ...node, headRefName, files: filesPage(changedFiles, 0) } : node,
         );
         return JSON.stringify({ data: { repository: { pullRequests: page(nodes) } } });
       }
@@ -70,10 +70,11 @@ export const pr = (
   number,
   title,
   mergedAt,
-  { author = 'dev', commitTimes = [], additions = 0, deletions = 0, files = [] } = {},
+  { author = 'dev', commitTimes = [], additions = 0, deletions = 0, files = [], branch = `work-${number}` } = {},
 ) => ({
   number,
   changedFiles: files,
+  headRefName: branch,
   additions,
   deletions,
   title,

@@ -46,14 +46,23 @@ export function dayStats(items) {
 }
 
 // The index of the project a change belongs to within its repo: one past the
-// index of the first project whose paths match every file it changed, leaving
-// out the repo's shared files, or 0 for the repo itself. A change that only
-// touched shared files, or whose files were not fetched, stays with the repo.
-export function projectIndex(repo, files) {
-  if (!repo?.projects.length || !files) return 0;
+// index of the first project whose branches match the branch a pull request
+// was made from, or failing that of the first project whose paths match every
+// file it changed, leaving out the repo's shared files, or 0 for the repo
+// itself. A change that only touched shared files, or whose files were not
+// fetched, stays with the repo unless its branch says otherwise.
+export function projectIndex(repo, files, branch) {
+  if (!repo?.projects.length) return 0;
+  if (branch) {
+    const index = repo.projects.findIndex((project) => project.branches.some((pattern) => pattern.test(branch)));
+    if (index >= 0) return index + 1;
+  }
+  if (!files) return 0;
   const own = files.filter((file) => !repo.sharedPaths.some((path) => path.test(file)));
   if (!own.length) return 0;
-  const index = repo.projects.findIndex((project) => own.every((file) => project.paths.some((path) => path.test(file))));
+  const index = repo.projects.findIndex(
+    (project) => project.paths.length && own.every((file) => project.paths.some((path) => path.test(file))),
+  );
   return index + 1;
 }
 
@@ -105,13 +114,13 @@ export function buildDays(items, config, activities = []) {
       for (const item of [...day.items].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))) {
         const repoIndex = repoOrder.get(item.repo.toLowerCase()) ?? Infinity;
         const repo = repos[repoIndex];
-        const project = projectIndex(repo, item.files);
+        const project = projectIndex(repo, item.files, item.branch);
         const key = `${item.repo.toLowerCase()}\n${project}`;
         if (!groups.has(key)) {
           const label = project ? repo.projects[project - 1].label : (repo?.label ?? item.repo);
           groups.set(key, { repo: item.repo, label, order: [repoIndex, project], items: [] });
         }
-        const { files, ...shown } = item;
+        const { files, branch, ...shown } = item;
         groups.get(key).items.push({ ...shown, title: cleanTitle(item.title) });
       }
       return {

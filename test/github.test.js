@@ -56,7 +56,7 @@ test('fails clearly for unknown users and inaccessible repos', async () => {
   await assert.rejects(fetchActivity(fakeGh().gh, config), /not found or not accessible: acme\/app/);
 });
 
-test('lists the files each change touched, only for repos split into projects', async () => {
+test('lists the files and branch of each change, only for repos split into projects', async () => {
   const split = parseConfig({
     title: 'Work',
     author: 'dev',
@@ -84,19 +84,20 @@ test('lists the files each change touched, only for repos split into projects', 
 
   const items = await fetchActivity(gh, split);
   assert.deepEqual(
-    items.map(({ repo, id, files }) => [repo, id, files]),
+    items.map(({ repo, id, files, branch }) => [repo, id, files, branch]),
     [
-      ['acme/other', '#4', undefined],
-      ['acme/other', 'ccccccc', undefined],
-      ['acme/app', '#1', ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts']],
-      ['acme/app', '#2', ['billing/x.ts']],
-      ['acme/app', 'aaaaaaa', ['billing/y.ts', 'docs/y.md']],
+      ['acme/other', '#4', undefined, undefined],
+      ['acme/other', 'ccccccc', undefined, undefined],
+      ['acme/app', '#1', ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'], 'work-1'],
+      ['acme/app', '#2', ['billing/x.ts'], 'work-2'],
+      ['acme/app', 'aaaaaaa', ['billing/y.ts', 'docs/y.md'], undefined],
     ],
   );
   // Only the repo split into projects asks for files: two more pages for the
   // big pull request, and one REST call for the direct commit.
   const queries = calls.filter((call) => call.args[1] === 'graphql').map((call) => call.args[3]);
   assert.equal(queries.filter((query) => query.includes('files(')).length, 3);
+  assert.equal(queries.filter((query) => query.includes('headRefName')).length, 1);
   assert.deepEqual(
     calls.filter((call) => call.args[1] === '--paginate').map((call) => call.args[2]),
     ['repos/acme/app/commits/aaaaaaa111'],

@@ -107,6 +107,7 @@ The workflow is careful with what it is given:
 - GitHub hides secrets in the run's log. It cannot recognise the separate parts of a JSON secret, so the workflow also hides every private text value in the config and other work (titles, names, repositories and descriptions) before running anything.
 - Reading uses your read-only token. Publishing uses the run's own `GITHUB_TOKEN`, which can only write to this repository (`contents: write`) and read its Pages setting (`pages: read`).
 - Because your other work now comes from the `WORKLOG_ACTIVITIES` secret, update that secret when you add to your local file, or the evening run shows the older list.
+- With [`requireActivityTimesFrom`](#keeping-activity-times-complete) in `WORKLOG_CONFIG`, the evening run fails, publishing nothing, when the `WORKLOG_ACTIVITIES` secret holds other work from that date without a `start` time. The last published page stays up; add the times locally and update the secret.
 
 ## Config
 
@@ -119,6 +120,7 @@ The workflow is careful with what it is given:
 | `timeZone` | no | [Time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used to split days and show times. Defaults to `Europe/London`. |
 | `since` | no | First day to include, as `YYYY-MM-DD`. Defaults to the whole history of every repository. |
 | `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. `--activities` on the command line overrides it. |
+| `requireActivityTimesFrom` | no | A date as `YYYY-MM-DD`. From that day on, every piece of [other work](#other-work) must have a `start` time, or `publish` refuses (see [Keeping activity times complete](#keeping-activity-times-complete)). Off when left out. |
 
 ### Projects within a repository
 
@@ -182,6 +184,18 @@ Much of the work behind a project never reaches GitHub: planning the next stages
 There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
 
 Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date`. A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
+
+### Keeping activity times complete
+
+Other work without a `start` time still appears, but it cannot move the day's first and last activity, so the day can look shorter than it was. To make sure no entry is forgotten, set `"requireActivityTimesFrom": "2026-09-22"` in the config. From then on, `publish` checks every entry dated that day or later before reading anything from GitHub, and refuses if any has no `start`:
+
+```text
+Not publishing: 1 piece of other work has no "start" time, and "requireActivityTimesFrom" in the config asks for one on every entry from 2026-09-22:
+  - activity 4, 2026-09-24, Warehouse: "switched on the staff page and..."
+Give each one a "start" (and an "end" if you know it) as an ISO time with its offset, such as "start": "2026-09-24T14:05:00+01:00", in /home/you/.config/github-worklog/activities.json. Then publish again.
+```
+
+`end` stays optional, and entries before the date are left alone, so older entries without times need no changes. `build` writes the page anyway and prints the same list as a warning. When it runs in GitHub Actions, where the log of a public repository is public, the list leaves out each entry's words and names it by its number in the file, its date and its project, and points to the `WORKLOG_ACTIVITIES` secret.
 
 ## How the password lock works
 

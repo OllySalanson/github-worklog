@@ -91,7 +91,7 @@ jobs:
           fi
           # GitHub hides whole secrets in the log, but not the pieces of a JSON
           # one, so hide each private text value in them too.
-          private='.. | objects | to_entries[] | select(.key | IN("kind", "date", "start", "end", "timeZone", "since") | not) | .value | .. | strings'
+          private='.. | objects | to_entries[] | select(.key | IN("kind", "date", "start", "end", "timeZone", "since", "requireActivityTimesFrom") | not) | .value | .. | strings'
           { printf '%s' "$WORKLOG_CONFIG" | jq -r "$private"
             [ -z "$WORKLOG_ACTIVITIES" ] || printf '%s' "$WORKLOG_ACTIVITIES" | jq -r "$private"
           } | while IFS= read -r line; do

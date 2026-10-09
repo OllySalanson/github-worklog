@@ -118,6 +118,7 @@ The workflow is careful with what it is given:
 | `repos` | yes | Repositories to include, as `"owner/repo"` or `{ "repo": "owner/repo", "name": "Shown name" }`. Without a `name`, `acme-co/warehouse-app` is shown as "Warehouse App". Projects appear in this order within each day. A repository can also show some of its changes as [separate projects](#projects-within-a-repository). |
 | `publishTo` | no | Repository to publish to, as `owner/repo`. `--repo` on the command line overrides it. |
 | `timeZone` | no | [Time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) used to split days and show times. Defaults to `Europe/London`. |
+| `dayStartsAt` | no | The time your work day starts, as `HH:MM` in `timeZone`, such as `"06:00"`. Anything before it, from code changes and their commits to the `start` and `end` of [other work](#other-work), belongs to the day before, so a stint that runs past midnight stays on the day it began. Must be before `12:00`. Left out, each day starts at midnight. See [Work that runs past midnight](#work-that-runs-past-midnight). |
 | `since` | no | First day to include, as `YYYY-MM-DD`. Defaults to the whole history of every repository. |
 | `activities` | no | Path to a private file of [other work](#other-work) to show alongside the code changes. A relative path is relative to the config file. `--activities` on the command line overrides it. |
 | `requireActivityTimesFrom` | no | A date as `YYYY-MM-DD`. From that day on, every piece of [other work](#other-work) must have a `start` time, or `publish` refuses (see [Keeping activity times complete](#keeping-activity-times-complete)). Off when left out. |
@@ -183,7 +184,11 @@ Much of the work behind a project never reaches GitHub: planning the next stages
 
 There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
 
-Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date`. A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
+Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date` (or, with [`dayStartsAt`](#work-that-runs-past-midnight), within that work day). A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
+
+### Work that runs past midnight
+
+By default a day runs from midnight to midnight, so a change merged at 00:40 shows on the next day, and other work dated the day before cannot count a time after midnight. If you often work late into the night, set the time your work day starts, such as `"dayStartsAt": "06:00"`. Then everything before 06:00 belongs to the day before: a change merged at 00:40 on Friday, the commits behind it, and other work dated Thursday that ended at 01:40 on Friday all show under Thursday, whose times then read, for example, "First activity 09:05 · Last activity 01:40". The last activity is still the latest time of the stint, even though its clock time is smaller. Give other work the date of the work day it belongs to, with its real `start` and `end` times. The evening run in GitHub Actions publishes the day so far, and the next run adds anything you do after it.
 
 ### Keeping activity times complete
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseConfig } from '../src/config.js';
-import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate, projectIndex } from '../src/worklog.js';
+import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate, projectIndex, workDayKey } from '../src/worklog.js';
 
 const config = parseConfig({ title: 'Work', author: 'dev', repos: ['acme/web', { repo: 'acme/api', name: 'API' }] });
 
@@ -275,5 +275,54 @@ test('the start and end times of other work count towards the day\'s activity ti
       { date: '2026-09-26', tasks: 1, firstActivity: '09:00', lastActivity: '09:00' },
       { date: '2026-09-24', tasks: 5, firstActivity: '08:15', lastActivity: '17:40' },
     ],
+  );
+});
+
+test('a work day can start later than midnight, so times before then belong to the day before', () => {
+  // 00:30 on 9 October in London (summer time) is 23:30 UTC on the 8th.
+  assert.equal(workDayKey('2026-10-08T23:30:00Z', 'Europe/London'), '2026-10-09');
+  assert.equal(workDayKey('2026-10-08T23:30:00Z', 'Europe/London', '06:00'), '2026-10-08');
+  assert.equal(workDayKey('2026-10-09T04:59:00Z', 'Europe/London', '06:00'), '2026-10-08');
+  assert.equal(workDayKey('2026-10-09T05:00:00Z', 'Europe/London', '06:00'), '2026-10-09');
+  // Across the end of a month and a year.
+  assert.equal(workDayKey('2026-11-01T01:00:00Z', 'Europe/London', '06:00'), '2026-10-31');
+  assert.equal(workDayKey('2027-01-01T02:00:00Z', 'Europe/London', '06:00'), '2026-12-31');
+});
+
+test('with "dayStartsAt", changes, commits and other work past midnight stay with the day they began', () => {
+  const late = { ...config, dayStartsAt: '06:00' };
+  const activity = (date, extra) => ({ date, project: 'Web', kind: 'testing', text: 'test round', ...extra });
+  const days = buildDays(
+    [
+      item('acme/web', '2026-10-08T09:00:00Z', 'Morning'),
+      // Merged at 00:40 on the 9th in London, with a commit at 00:20.
+      item('acme/web', '2026-10-08T23:40:00Z', 'After midnight', { workTimes: ['2026-10-08T23:20:00Z'] }),
+      // 06:00 on the 9th starts the next work day.
+      item('acme/web', '2026-10-09T05:00:00Z', 'Next morning'),
+    ],
+    late,
+    [
+      activity('2026-10-08', { start: '2026-10-08T22:30:00+01:00', end: '2026-10-09T01:40:00+01:00' }),
+      // Dated the 9th but at 02:00 that night, which is the 8th's work day.
+      activity('2026-10-09', { start: '2026-10-09T02:00:00+01:00' }),
+    ],
+  );
+  assert.deepEqual(
+    days.map(({ date, tasks, firstActivity, lastActivity, groups }) => ({
+      date,
+      tasks,
+      firstActivity,
+      lastActivity,
+      titles: groups.flatMap((group) => group.items.map((i) => i.title)),
+    })),
+    [
+      { date: '2026-10-09', tasks: 2, firstActivity: '06:00', lastActivity: '06:00', titles: ['Next morning'] },
+      { date: '2026-10-08', tasks: 3, firstActivity: '10:00', lastActivity: '01:40', titles: ['Morning', 'After midnight'] },
+    ],
+  );
+  // Without it, each change stays on its calendar day.
+  assert.deepEqual(
+    buildDays([item('acme/web', '2026-10-08T23:40:00Z', 'After midnight')], config).map((day) => day.date),
+    ['2026-10-09'],
   );
 });

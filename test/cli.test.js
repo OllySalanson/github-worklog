@@ -225,6 +225,28 @@ test('publish goes ahead when all other work from the required date has a start 
   assert.match(await unlock(published), /First activity 07:10/);
 });
 
+test('with "dayStartsAt", work past midnight stays with the day it began, alongside required start times', async () => {
+  const { dir, passwordPath, output, deps } = await setup();
+  await writeFile(
+    join(dir, 'activities.json'),
+    JSON.stringify([
+      { date: '2026-09-24', project: 'Warehouse', kind: 'testing', text: 'late test round', start: '2026-09-24T23:10:00+01:00', end: '2026-09-25T01:40:00+01:00' },
+    ]),
+  );
+  const configPath = join(dir, 'workday.json');
+  await writeFile(
+    configPath,
+    JSON.stringify({ title: 'T', author: 'dev', repos: ['acme/app'], activities: 'activities.json', requireActivityTimesFrom: '2026-09-22', dayStartsAt: '06:00' }),
+  );
+  const out = join(dir, 'site.html');
+  const code = await run(['build', '--config', configPath, '--password-file', passwordPath, '--out', out], deps);
+  assert.equal(code, 0, output.join('\n'));
+  assert.doesNotMatch(output.join('\n'), /start" time/);
+  const html = await unlock(await readFile(out, 'utf8'));
+  assert.match(html, /Thursday 24 September 2026[\s\S]*First activity 15:00 · Last activity 01:40/);
+  assert.doesNotMatch(html, /id="d2026-09-25"/);
+});
+
 test('--repo overrides publishTo, and publish without either is refused', async () => {
   const { configPath, passwordPath, output, deps } = await setup();
   const code = await run(['publish', '--config', configPath, '--password-file', passwordPath], deps);

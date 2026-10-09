@@ -2,6 +2,7 @@
   "title": "Acme Co - record of work",
   "author": "your-github-username",
   "timeZone": "Europe/London",
+  "dayStartsAt": "06:00",
   "since": "2026-01-01",
   "publishTo": "your-github-username/github-worklog",
   "activities": "activities.example.json",

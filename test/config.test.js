@@ -14,6 +14,8 @@ test('fills in defaults and labels repos from their names', () => {
   assert.equal(config.publishTo, null);
   assert.equal(config.activities, null);
   assert.equal(config.requireActivityTimesFrom, null);
+  assert.equal(config.dayStartsAt, null);
+  assert.equal(parseConfig({ ...base, dayStartsAt: '06:00' }).dayStartsAt, '06:00');
   assert.equal(parseConfig({ ...base, requireActivityTimesFrom: '2026-09-22' }).requireActivityTimesFrom, '2026-09-22');
   assert.deepEqual(config.repos, [
     { owner: 'acme', name: 'warehouse-app', fullName: 'acme/warehouse-app', label: 'Warehouse App', projects: [], sharedPaths: [] },
@@ -98,6 +100,10 @@ test('rejects bad configs with a clear message', () => {
     [{ ...base, activities: '' }, /"activities"/],
     [{ ...base, requireActivityTimesFrom: '22 Sep' }, /"requireActivityTimesFrom" must be a date/],
     [{ ...base, requireActivityTimesFrom: true }, /"requireActivityTimesFrom"/],
+    [{ ...base, dayStartsAt: '6am' }, /"dayStartsAt" must be a time of the morning/],
+    [{ ...base, dayStartsAt: '6:00' }, /"dayStartsAt" must be a time of the morning/],
+    [{ ...base, dayStartsAt: '12:00' }, /"dayStartsAt" must be a time of the morning/],
+    [{ ...base, dayStartsAt: 6 }, /"dayStartsAt"/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [] }] }, /"projects" must be a non-empty list/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ paths: ['a/**'] }] }] }, /non-empty "name"/],
     [{ ...base, repos: [{ repo: 'acme/app', projects: [{ name: 'A', paths: [] }] }] }, /"paths" of project A/],

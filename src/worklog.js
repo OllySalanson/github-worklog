@@ -18,6 +18,17 @@ export function dayKey(time, timeZone) {
   );
 }
 
+// The work day a time belongs to: its calendar day in the time zone, or the
+// day before when it falls before the hour the work day starts ("HH:MM"), so
+// work that runs past midnight stays with the day it began.
+export function workDayKey(time, timeZone, dayStartsAt = null) {
+  const key = dayKey(time, timeZone);
+  if (!dayStartsAt || clockTime(time, timeZone) >= dayStartsAt) return key;
+  const previous = new Date(`${key}T12:00:00Z`);
+  previous.setUTCDate(previous.getUTCDate() - 1);
+  return previous.toISOString().slice(0, 10);
+}
+
 export function clockTime(time, timeZone) {
   return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(
     new Date(time),
@@ -66,13 +77,14 @@ export function projectIndex(repo, files, branch) {
   return index + 1;
 }
 
-// Groups activity into days (newest first), each with its items grouped by
+// Groups activity into work days (newest first; see workDayKey), each with its items grouped by
 // repo, and by project within a repo, in config order, its totals and the first and last activity time, and
 // then any other work from the activities file. Each activity counts as a task
 // completed, but has no lines of code, and its optional start and end times
 // count towards the day's activity times.
 export function buildDays(items, config, activities = []) {
-  const { timeZone, since, repos } = config;
+  const { timeZone, since, repos, dayStartsAt } = config;
+  const workDay = (time) => workDayKey(time, timeZone, dayStartsAt);
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
   const days = new Map();
   const dayFor = (key) => {
@@ -81,7 +93,7 @@ export function buildDays(items, config, activities = []) {
   };
 
   for (const item of items) {
-    const key = dayKey(item.time, timeZone);
+    const key = workDay(item.time);
     if (since && key < since) continue;
     const day = dayFor(key);
     day.items.push(item);
@@ -91,10 +103,10 @@ export function buildDays(items, config, activities = []) {
     if (since && activity.date < since) continue;
     const day = dayFor(activity.date);
     day.activities.push({ ...activity, label: ACTIVITY_KINDS[activity.kind] });
-    // A time only counts on the activity's own day, so work that ran past
-    // midnight cannot give a day a clock time from another day.
+    // A time only counts on the activity's own work day, so work that ran
+    // past the start of the next one cannot give a day a time from another.
     for (const time of [activity.start, activity.end]) {
-      if (time && dayKey(time, timeZone) === activity.date) day.times.push(time);
+      if (time && workDay(time) === activity.date) day.times.push(time);
     }
   }
 
@@ -102,7 +114,7 @@ export function buildDays(items, config, activities = []) {
   // their own day, but only for days that already show some work.
   for (const item of items) {
     for (const time of item.workTimes ?? []) {
-      days.get(dayKey(time, timeZone))?.times.push(time);
+      days.get(workDay(time))?.times.push(time);
     }
   }
 

@@ -55,6 +55,13 @@ export function parseConfig(data) {
       throw new ConfigError('"requireActivityTimesFrom" must be a date like 2026-01-31.');
     }
   }
+  let dayStartsAt = null;
+  if (data.dayStartsAt !== undefined) {
+    dayStartsAt = requireString(data, 'dayStartsAt');
+    if (!/^(0\d|1[01]):[0-5]\d$/.test(dayStartsAt)) {
+      throw new ConfigError('"dayStartsAt" must be a time of the morning like 06:00, from 00:00 to 11:59.');
+    }
+  }
   if (!Array.isArray(data.repos) || data.repos.length === 0) {
     throw new ConfigError('"repos" must be a non-empty list of "owner/repo" names.');
   }
@@ -65,7 +72,7 @@ export function parseConfig(data) {
     if (seen.has(key)) throw new ConfigError(`Repo listed twice: ${repo.fullName}`);
     seen.add(key);
   }
-  return { title, author, timeZone, since, publishTo, activities, requireActivityTimesFrom, repos };
+  return { title, author, timeZone, dayStartsAt, since, publishTo, activities, requireActivityTimesFrom, repos };
 }
 
 function parseRepo(entry) {

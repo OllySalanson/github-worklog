@@ -73,13 +73,22 @@ h2.month {
   margin: 2rem 0 .75rem;
 }
 .day {
+  --day-heading: 2.2rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: .75rem;
   padding: 1rem 1.1rem;
   margin-bottom: .9rem;
 }
-.day h3 { font-size: 1.1rem; margin: 0; }
+.day h3 {
+  font-size: 1.1rem;
+  line-height: var(--day-heading);
+  margin: -.3rem -1.1rem 0;
+  padding: 0 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .stats { font-size: .9rem; margin: .2rem 0 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .stats span { display: block; }
 .stats b { font-weight: 600; }
@@ -87,7 +96,12 @@ h2.month {
 .removed { color: var(--removed); }
 .times { color: var(--muted); font-size: .85rem; margin: .1rem 0 .4rem; }
 .repo { margin-top: .75rem; }
-.repo h4 { font-size: .9rem; font-weight: 600; margin: 0 0 .25rem; }
+.repo h4 { font-size: .9rem; font-weight: 600; margin: 0 -1.1rem .25rem; padding: .15rem 1.1rem; }
+/* While scrolling, the day and then the project stay at the top until the
+   next one pushes them off. Opaque so the list never shows through. */
+.day h3, .repo h4 { position: sticky; z-index: 1; background: var(--surface); }
+.day h3 { top: 0; z-index: 2; }
+.repo h4 { top: var(--day-heading); }
 .repo h5 { font-size: .8rem; font-weight: 600; color: var(--muted); margin: .45rem 0 .15rem; }
 .repo h4 + h5 { margin-top: 0; }
 .repo ul { margin: 0; padding-left: 1.2rem; }

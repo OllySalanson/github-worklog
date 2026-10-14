@@ -16,9 +16,9 @@ const days = [
         repo: 'acme/web',
         label: 'Web & Shop',
         items: [{ id: '#7', title: 'Show <b>prices</b> "fast"', url: 'https://github.com/acme/web/pull/7?a=1&b=2' }],
+        other: [],
       },
     ],
-    activities: [],
   },
   {
     date: '2026-08-31',
@@ -28,8 +28,7 @@ const days = [
     deletions: 3,
     firstActivity: '10:00',
     lastActivity: '10:00',
-    groups: [{ repo: 'acme/web', label: 'Web', items: [{ id: 'abc1234', title: 'Tidy up', url: 'https://x.test/c' }] }],
-    activities: [],
+    groups: [{ repo: 'acme/web', label: 'Web', items: [{ id: 'abc1234', title: 'Tidy up', url: 'https://x.test/c' }], other: [] }],
   },
 ];
 
@@ -95,63 +94,67 @@ test('heads each day with tasks completed and green and red line counts', () => 
   assert.match(html, /--added: #1a7f37;[\s\S]*--removed: #d1242f;[\s\S]*--added: #3fb950;[\s\S]*--removed: #f85149;/);
 });
 
-test('lists other work after the code changes, with the kind as a plain label', () => {
-  const activities = [
-    { date: '2026-09-25', project: 'Web <Shop>', kind: 'planning', label: 'Planning', text: 'planning the "next" stages' },
-    { date: '2026-09-25', project: 'Web', kind: 'setting-up', label: 'Setting up', text: 'switched on the help page' },
-  ];
-  const html = render({ days: [{ ...days[0], activities }, days[1]] });
+const testing = (entries) => ({ kind: 'testing', label: 'Testing', entries });
+
+test('shows other work under its project, after the code changes, in a section for each kind', () => {
+  const group = {
+    ...days[0].groups[0],
+    other: [
+      { kind: 'planning', label: 'Planning', entries: [{ text: 'Planning the "next" <stages>', start: '08:30', end: '09:15' }] },
+      {
+        kind: 'setting-up',
+        label: 'Setting up',
+        entries: [
+          { text: 'Switched on the help page', start: '11:00', end: null },
+          { text: 'Sent the welcome email', start: null, end: '12:00' },
+          { text: 'Tidied the settings', start: null, end: null },
+          { text: 'Checked the domain', start: '13:00', end: '13:00' },
+        ],
+      },
+    ],
+  };
+  const html = render({ days: [{ ...days[0], groups: [group, { repo: null, label: 'Hiring', items: [], other: [testing([{ text: 'Test day', start: null, end: null }])] }] }, days[1]] });
   assert.match(
     html,
-    /Show &lt;b&gt;prices[\s\S]*<\/ul><\/div>\n<div class="repo other"><h4>Other work<\/h4><ul>\n<li><span class="kind">Planning<\/span><span>Web &lt;Shop&gt;: planning the &quot;next&quot; stages<\/span><\/li>\n<li><span class="kind">Setting up<\/span><span>Web: switched on the help page<\/span><\/li>\n<\/ul><\/div>/,
+    /<div class="repo"><h4>Web &amp; Shop<\/h4><h5>Code changes<\/h5><ul>\n<li><a [^\n]*Show &lt;b&gt;prices[^\n]*<\/li>\n<\/ul>/,
   );
-  assert.equal(html.match(/Other work/g).length, 1);
-  assert.match(html, /2 changes and 2 other activities over 2 days/);
+  assert.match(
+    html,
+    /<\/ul><h5>Planning<\/h5><ul>\n<li>Planning the &quot;next&quot; &lt;stages&gt;<span class="id">08:30 to 09:15<\/span><\/li>\n<\/ul><h5>Setting up<\/h5><ul>\n<li>Switched on the help page<span class="id">from 11:00<\/span><\/li>\n<li>Sent the welcome email<span class="id">until 12:00<\/span><\/li>\n<li>Tidied the settings<\/li>\n<li>Checked the domain<span class="id">13:00<\/span><\/li>\n<\/ul><\/div>\n<div class="repo"><h4>Hiring<\/h4><h5>Testing<\/h5><ul>\n<li>Test day<\/li>\n<\/ul><\/div>/,
+  );
+  assert.doesNotMatch(html, /Other work/);
+  // Without other work, a project's changes need no heading of their own.
+  assert.equal(html.match(/Code changes/g).length, 1);
+  assert.match(html, /2 changes and 6 other activities over 2 days/);
+});
+
+const onlyOtherWork = (extra) => ({
+  date: '2026-09-24',
+  label: 'Thursday 24 September 2026',
+  tasks: 1,
+  additions: 0,
+  deletions: 0,
+  firstActivity: null,
+  lastActivity: null,
+  groups: [{ repo: 'acme/web', label: 'Web', items: [], other: [testing([{ text: 'Test calls (round 2)', start: null, end: null }])] }],
+  ...extra,
 });
 
 test('a day with only other work shows its task count but no line totals or times', () => {
-  const html = render({
-    days: [
-      {
-        date: '2026-09-24',
-        label: 'Thursday 24 September 2026',
-        tasks: 1,
-        additions: 0,
-        deletions: 0,
-        firstActivity: null,
-        lastActivity: null,
-        groups: [],
-        activities: [{ date: '2026-09-24', project: 'Web', kind: 'testing', label: 'Testing', text: 'test calls (round 2)' }],
-      },
-    ],
-  });
+  const html = render({ days: [onlyOtherWork()] });
   assert.match(
     html,
-    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n\n<div class="repo other"><h4>Other work<\/h4><ul>\n<li><span class="kind">Testing<\/span><span>Web: test calls \(round 2\)<\/span><\/li>/,
+    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n<div class="repo"><h4>Web<\/h4><h5>Testing<\/h5><ul>\n<li>Test calls \(round 2\)<\/li>/,
   );
-  assert.doesNotMatch(html, /lines? of code|class="times"|null/);
+  assert.doesNotMatch(html, /lines? of code|class="times"|null|Code changes/);
   assert.match(html, /0 changes and 1 other activity over 1 day/);
 });
 
 test('a day with only other work shows activity times when its entries recorded them', () => {
-  const html = render({
-    days: [
-      {
-        date: '2026-09-24',
-        label: 'Thursday 24 September 2026',
-        tasks: 2,
-        additions: 0,
-        deletions: 0,
-        firstActivity: '09:00',
-        lastActivity: '11:30',
-        groups: [],
-        activities: [{ date: '2026-09-24', project: 'Web', kind: 'testing', label: 'Testing', text: 'test calls' }],
-      },
-    ],
-  });
+  const html = render({ days: [onlyOtherWork({ tasks: 2, firstActivity: '09:00', lastActivity: '11:30' })] });
   assert.match(
     html,
-    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>2<\/b> tasks completed<\/span><\/p><p class="times">First activity 09:00 · Last activity 11:30<\/p>\n\n<div class="repo other">/,
+    /<h3>Thursday 24 September 2026<\/h3><p class="stats"><span><b>2<\/b> tasks completed<\/span><\/p><p class="times">First activity 09:00 · Last activity 11:30<\/p>\n<div class="repo">/,
   );
   assert.doesNotMatch(html, /lines? of code/);
 });

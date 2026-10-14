@@ -82,10 +82,12 @@ test('build adds other work from the activities file, only inside the encrypted 
   const page = await readFile(out, 'utf8');
   assert.doesNotMatch(page, /Warehouse|bug reports|test calls/);
   const html = await unlock(page);
-  assert.match(html, /Thursday 24 September 2026[\s\S]*Add a checkout page[\s\S]*Other work[\s\S]*Reviewing<\/span><span>Warehouse: reviewed all 28 staff bug reports/);
-  assert.match(html, /<h3>Wednesday 23 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n\n<div class="repo other">[\s\S]*Testing<\/span><span>Warehouse: test calls \(round 2\)/);
+  assert.match(html, /Thursday 24 September 2026[\s\S]*<h4>App<\/h4><ul>\n<li>[^\n]*Add a checkout page[\s\S]*<h4>Warehouse<\/h4><h5>Reviewing<\/h5><ul>\n<li>Reviewed all 28 staff bug reports<\/li>/);
+  assert.match(html, /<h3>Wednesday 23 September 2026<\/h3><p class="stats"><span><b>1<\/b> task completed<\/span><\/p>\n<div class="repo"><h4>Warehouse<\/h4><h5>Testing<\/h5><ul>\n<li>Test calls \(round 2\)<\/li>/);
   assert.match(html, /<b>2<\/b> tasks completed<\/span><span><b class="added">/);
   assert.match(output.join('\n'), /Found 1 change and 2 other activities over 2 days/);
+  // Warehouse is not one of the repos, so it gets a heading of its own, and a note says so.
+  assert.match(output.join('\n'), /^Note: other work for "Warehouse" matches no repo or project name in the config, so it shows under a heading of its own\./m);
 });
 
 test('publish pushes the encrypted page to gh-pages and turns on Pages', async () => {
@@ -156,7 +158,7 @@ test('--activities replaces the activities file named in the config', async () =
     deps,
   );
   assert.equal(code, 0, output.join('\n'));
-  assert.match(await unlock(await readFile(out, 'utf8')), /Warehouse: planned the next stage/);
+  assert.match(await unlock(await readFile(out, 'utf8')), /<h4>Warehouse<\/h4><h5>Planning<\/h5><ul>\n<li>Planned the next stage<\/li>/);
 });
 
 test('publish refuses other work without a start time from the date the config asks, before reading GitHub', async () => {
@@ -205,7 +207,7 @@ test('publish refuses other work without a start time from the date the config a
   const built = await run(['build', '--config', configPath, '--password-file', passwordPath, '--out', out], { ...deps, env: {} });
   assert.equal(built, 0, output.join('\n'));
   assert.match(output.join('\n'), /^Warning: 2 pieces of other work have no "start" time[\s\S]*Until then, publish refuses\.$/m);
-  assert.match(await unlock(await readFile(out, 'utf8')), /Warehouse: reviewed all 28 staff bug reports/);
+  assert.match(await unlock(await readFile(out, 'utf8')), /<h4>Warehouse<\/h4><h5>Reviewing<\/h5><ul>\n<li>Reviewed all 28 staff bug reports/);
 });
 
 test('publish goes ahead when all other work from the required date has a start time', async () => {
@@ -302,9 +304,10 @@ test('publish stores the other work with the page, and a later publish with --st
   // The words of the other work are hidden in the Actions log.
   assert.ok(output.includes('::add-mask::Warehouse'));
   assert.ok(output.includes(`::add-mask::${activities[499].text}`));
+  assert.doesNotMatch(output.join('\n'), /Note:/);
   const secondPage = await unlock(execFileSync('git', ['show', 'gh-pages:index.html'], { cwd: remote, encoding: 'utf8' }));
   assert.equal(secondPage, firstPage);
-  for (let i = 1; i <= 500; i++) assert.ok(secondPage.includes(`test round ${i} of the staff app`), `entry ${i}`);
+  for (let i = 1; i <= 500; i++) assert.ok(secondPage.includes(`Test round ${i} of the staff app`), `entry ${i}`);
   const restored = execFileSync('git', ['show', 'gh-pages:activities.enc.json'], { cwd: remote, encoding: 'utf8' });
   assert.notEqual(restored, stored);
   assert.deepEqual(await unlockActivities(restored, PASSWORD), activities);

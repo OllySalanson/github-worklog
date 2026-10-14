@@ -6,7 +6,7 @@ import { fetchActivity, runGh } from './github.js';
 import { lockActivities, lockPage, unlockActivities } from './lock.js';
 import { fetchStoredActivities, PublishError, publish, runGit } from './publish.js';
 import { pageSummary, renderPage } from './render.js';
-import { buildDays } from './worklog.js';
+import { buildDays, unmatchedProjects } from './worklog.js';
 
 export const USAGE = `Usage:
   github-worklog build   --config <file> --password-file <file> [--activities <file> | --stored-activities] [--repo <owner/repo>] [--out <file>]
@@ -112,6 +112,15 @@ export async function run(
     // GitHub hides whole secrets in the log, but the other work is no secret
     // there, so hide each of its private words before anything can print them.
     if (actions) for (const line of privateLines(activities)) out(`::add-mask::${line}`);
+
+    // Project names are private, so the public log of an Actions run never names them.
+    const unmatched = actions ? [] : unmatchedProjects(activities, config);
+    if (unmatched.length) {
+      const names = unmatched.map((project) => `"${project}"`).join(', ');
+      out(
+        `Note: other work for ${names} matches no repo or project name in the config, so it shows under ${unmatched.length === 1 ? 'a heading of its own' : 'headings of their own'}. Use the same name as on the page to show it with that project's changes.`,
+      );
+    }
 
     const untimed = untimedActivities(activities, config.requireActivityTimesFrom);
     if (untimed.length) {

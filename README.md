@@ -7,7 +7,7 @@ github-worklog reads the pull requests and commits you made in the repositories 
 - **Per day:** the plain-English title of every merged pull request, grouped by project, each linking to GitHub. Commits pushed straight to the default branch (common before a project starts using pull requests) are listed too.
 - **Day totals:** at the top of each day, the number of tasks completed (code changes plus other work) and the lines of code added and removed, shown the way GitHub shows them: a green `+1,234` and a red `-567`.
 - **Activity times:** the first and last recorded activity each day, from GitHub and from any times given for other work. These are clearly labelled as activity times, not hours worked.
-- **Other work:** optionally, work that never becomes code, such as planning, reviews, testing and setting things up, listed under the day it happened from a private file you keep.
+- **Other work:** optionally, work that never becomes code, such as planning, reviews, testing and setting things up, from a private file you keep. It is listed under the day it happened and the project it was for, beside that project's code changes, in a section for each kind of work with its start and end times.
 - **Private:** the page is encrypted with your password before it leaves your machine. Only the encrypted page is ever published.
 - **Simple:** one static page that works on a phone, follows the light or dark setting, and loads nothing from anywhere else. No framework, no tracking, no runtime dependencies.
 
@@ -177,15 +177,17 @@ Much of the work behind a project never reaches GitHub: planning the next stages
 | Key | Meaning |
 | --- | --- |
 | `date` | The day it happened, as `YYYY-MM-DD`. |
-| `project` | Shown before the line, as in "Warehouse: reviewed all 28 staff bug reports". Any name works; it does not have to be one of the `repos`. |
-| `kind` | One of `planning`, `reviewing`, `testing`, `setting-up` or `other`, shown as a small label: Planning, Reviewing, Testing, Setting up or Other. |
+| `project` | The project it was for. Use the name a repository or [project](#projects-within-a-repository) is shown under on the page (capitals do not matter), such as `Warehouse` or `Label Printer`, to list it with that project's code changes. Any other name gets a heading of its own, after the projects from `repos`, and `build` and `publish` print a note naming it in case it was meant to match (not in GitHub Actions, whose log may be public). |
+| `kind` | One of `planning`, `reviewing`, `testing`, `setting-up` or `other`, shown as a section of its project: Planning, Reviewing, Testing, Setting up or Other. |
 | `text` | What the time was spent on, in plain words. |
-| `start` | Optional. When it started, as an ISO time with its offset, such as `2026-09-24T14:05:00+01:00`. |
+| `start` | Optional. When it started, as an ISO time with its offset, such as `2026-09-24T14:05:00+01:00`. Shown after the line, as in "14:05 to 15:30". |
 | `end` | Optional. When it finished, in the same form. It cannot be before `start`. |
 
 There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
 
-Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date` (or, with [`dayStartsAt`](#work-that-runs-past-midnight), within that work day). A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published encrypted, so keep it out of git: inside the page, and as a copy encrypted with the same password that the [evening run](#publish-every-evening-with-github-actions) reads back (`--stored-activities`). The copy has no size limit.
+![A day showing each project's code changes, then its other work in sections such as Planning and Testing, each line with its times](docs/other-work.png)
+
+Each day lists its other work under its project, after that project's code changes (headed **Code changes** when there is other work too), in a section for each kind, always in the order Planning, Reviewing, Testing, Setting up, Other. Within a section, entries with a `start` come first, earliest first, then the rest in the order of the file. A project with only other work that day still appears in its usual place. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date` (or, with [`dayStartsAt`](#work-that-runs-past-midnight), within that work day). A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published encrypted, so keep it out of git: inside the page, and as a copy encrypted with the same password that the [evening run](#publish-every-evening-with-github-actions) reads back (`--stored-activities`). The copy has no size limit.
 
 ### Work that runs past midnight
 

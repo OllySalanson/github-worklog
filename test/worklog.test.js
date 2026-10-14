@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseConfig } from '../src/config.js';
-import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate, projectIndex, workDayKey } from '../src/worklog.js';
+import { buildDays, dayStats, cleanTitle, clockTime, dayKey, longDate, projectIndex, unmatchedProjects, workDayKey } from '../src/worklog.js';
 
 const config = parseConfig({ title: 'Work', author: 'dev', repos: ['acme/web', { repo: 'acme/api', name: 'API' }] });
 
@@ -173,6 +173,93 @@ test('pull requests show under the project their branch names, and the branch is
   assert.ok(days[0].groups.every((group) => group.items.every((i) => !('branch' in i))));
 });
 
+test('other work joins the group of its project, after its changes, in a section for each kind in a set order', () => {
+  const activity = (project, kind, text, start) => ({ date: '2026-09-24', project, kind, text, ...(start && { start }) });
+  const days = buildDays(
+    [item('acme/web', '2026-09-24T09:00:00Z', 'A'), item('acme/api', '2026-09-24T10:00:00Z', 'B')],
+    config,
+    [
+      activity('Hiring', 'other', 'interviewed a developer'),
+      activity('api', 'testing', 'untimed test round'),
+      activity('API', 'testing', 'afternoon test round', '2026-09-24T15:00:00+01:00'),
+      activity('Web', 'other', 'wrote a guide'),
+      activity('API', 'planning', 'planned the next stage', '2026-09-24T08:00:00+01:00'),
+      activity('API', 'testing', 'morning test round', '2026-09-24T09:30:00+01:00'),
+      activity('Docs', 'reviewing', 'read the drafts'),
+      activity('API', 'setting-up', 'switched on the keys', '2026-09-24T11:00:00+01:00'),
+      activity('API', 'reviewing', 'went through the bug reports', '2026-09-24T10:00:00+01:00'),
+    ],
+  );
+  assert.deepEqual(
+    days[0].groups.map((group) => [
+      group.repo,
+      group.label,
+      group.items.map((i) => i.title),
+      group.other.map((kind) => [kind.label, kind.entries.map((e) => e.text)]),
+    ]),
+    [
+      ['acme/web', 'Web', ['A'], [['Other', ['Wrote a guide']]]],
+      [
+        'acme/api',
+        'API',
+        ['B'],
+        [
+          ['Planning', ['Planned the next stage']],
+          ['Reviewing', ['Went through the bug reports']],
+          // Timed entries in time order, then untimed ones in the order of the file.
+          ['Testing', ['Morning test round', 'Afternoon test round', 'Untimed test round']],
+          ['Setting up', ['Switched on the keys']],
+        ],
+      ],
+      // Projects with no repo of their name follow, in the order of the file.
+      [null, 'Hiring', [], [['Other', ['Interviewed a developer']]]],
+      [null, 'Docs', [], [['Reviewing', ['Read the drafts']]]],
+    ],
+  );
+  assert.equal(days[0].tasks, 11);
+  const projects = (...names) => names.map((project) => ({ project }));
+  assert.deepEqual(unmatchedProjects(projects('Hiring', 'web', 'API', 'Docs', 'hiring'), config), ['Hiring', 'Docs']);
+});
+
+test('other work keeps its start and end clock times in the configured time zone', () => {
+  const days = buildDays([], config, [
+    { date: '2026-09-24', project: 'Web', kind: 'testing', text: 'both', start: '2026-09-24T13:00:00Z', end: '2026-09-24T13:45:00Z' },
+    { date: '2026-09-24', project: 'Web', kind: 'testing', text: 'end only', end: '2026-09-24T16:00:00Z' },
+  ]);
+  assert.deepEqual(days[0].groups[0].other[0].entries, [
+    { text: 'Both', start: '14:00', end: '14:45' },
+    { text: 'End only', start: null, end: '17:00' },
+  ]);
+});
+
+test('a project within a repo gets its own other work, beside the repo and its changes', () => {
+  const activity = (project, kind, text) => ({ date: '2026-09-24', project, kind, text });
+  const days = buildDays(
+    [
+      item('acme/web', '2026-09-24T09:00:00Z', 'Help page', { files: ['help/b.ts'] }),
+      item('acme/web', '2026-09-24T10:00:00Z', 'Everything', { files: ['src/app.ts'] }),
+    ],
+    split,
+    [
+      activity('Billing', 'reviewing', 'went through the refund requests'),
+      activity('Help', 'testing', 'tried every help link'),
+      activity('Web', 'planning', 'planned the new menu'),
+      activity('API', 'setting-up', 'switched on the keys'),
+    ],
+  );
+  assert.deepEqual(
+    days[0].groups.map((group) => [group.repo, group.label, group.items.map((i) => i.title), group.other.map((kind) => kind.label)]),
+    [
+      ['acme/web', 'Web', ['Everything'], ['Planning']],
+      // A project with only other work that day still has its place after its repo.
+      ['acme/web', 'Billing', [], ['Reviewing']],
+      ['acme/web', 'Help', ['Help page'], ['Testing']],
+      ['acme/api', 'API', [], ['Setting up']],
+    ],
+  );
+  assert.deepEqual(unmatchedProjects([activity('billing', 'other', 'x'), activity('Shop', 'other', 'y')], split), ['Shop']);
+});
+
 test('commits inside a pull request widen that day\'s activity times, but never add a day', () => {
   const days = buildDays(
     [
@@ -229,28 +316,23 @@ test('other work joins its day and counts as a task, and can make a day of its o
       activity('2026-08-31', 'too early'),
     ],
   );
+  const other = (day) => day.groups.flatMap((group) => group.other.flatMap((kind) => kind.entries.map((e) => `${kind.label}: ${e.text}`)));
   assert.deepEqual(
-    days.map(({ date, tasks, additions, firstActivity, activities }) => ({
-      date,
-      tasks,
-      additions,
-      firstActivity,
-      activities: activities.map((a) => `${a.label}: ${a.text}`),
-    })),
+    days.map((day) => ({ date: day.date, tasks: day.tasks, additions: day.additions, firstActivity: day.firstActivity, other: other(day) })),
     [
-      { date: '2026-09-26', tasks: 1, additions: 0, firstActivity: null, activities: ['Testing: test calls'] },
+      { date: '2026-09-26', tasks: 1, additions: 0, firstActivity: null, other: ['Testing: Test calls'] },
       {
         date: '2026-09-24',
         tasks: 3,
         additions: 10,
         firstActivity: '10:00',
-        activities: ['Planning: planning the next stages', 'Setting up: switched on the help page'],
+        other: ['Planning: Planning the next stages', 'Setting up: Switched on the help page'],
       },
     ],
   );
   assert.equal(days[0].label, 'Saturday 26 September 2026');
   assert.equal(days[0].lastActivity, null);
-  assert.deepEqual(days[0].groups, []);
+  assert.deepEqual(days[0].groups.map((group) => [group.label, group.items]), [['Web', []]]);
 });
 
 test('the start and end times of other work count towards the day\'s activity times', () => {

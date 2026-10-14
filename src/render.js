@@ -88,15 +88,14 @@ h2.month {
 .times { color: var(--muted); font-size: .85rem; margin: .1rem 0 .4rem; }
 .repo { margin-top: .75rem; }
 .repo h4 { font-size: .9rem; font-weight: 600; margin: 0 0 .25rem; }
+.repo h5 { font-size: .8rem; font-weight: 600; color: var(--muted); margin: .45rem 0 .15rem; }
+.repo h4 + h5 { margin-top: 0; }
 .repo ul { margin: 0; padding-left: 1.2rem; }
 .repo li { margin: .2rem 0; overflow-wrap: anywhere; }
 .repo li a { text-decoration: none; }
 .repo li a:hover { text-decoration: underline; }
-.id { color: var(--muted); font-size: .8rem; margin-left: .35rem; font-variant-numeric: tabular-nums; }
+.id { color: var(--muted); font-size: .8rem; margin-left: .35rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .empty { color: var(--muted); }
-.other ul { list-style: none; padding-left: 0; }
-.other li { display: flex; align-items: baseline; gap: .6rem; }
-.kind { flex: none; width: 5rem; color: var(--muted); font-size: .8rem; }
 `;
 
 const LOCK_SCRIPT = `
@@ -120,10 +119,14 @@ function plural(count, word) {
   return count === 1 ? word : `${word}s`;
 }
 
+const changeCount = (day) => day.groups.reduce((n, group) => n + group.items.length, 0);
+const activityCount = (day) =>
+  day.groups.reduce((n, group) => n + group.other.reduce((m, kind) => m + kind.entries.length, 0), 0);
+
 // Lines of code are only shown for a day with code changes.
 function renderStats(day) {
   const tasks = `<span><b>${formatCount(day.tasks)}</b> ${plural(day.tasks, 'task')} completed</span>`;
-  if (!day.groups.length) return `<p class="stats">${tasks}</p>`;
+  if (!changeCount(day)) return `<p class="stats">${tasks}</p>`;
   return (
     `<p class="stats">` +
     tasks +
@@ -139,18 +142,41 @@ function monthLabel(date) {
   );
 }
 
+// "14:00 to 14:45", "from 14:00", "until 14:45", or nothing.
+function entryTimes({ start, end }) {
+  if (start && end) return start === end ? start : `${start} to ${end}`;
+  if (start) return `from ${start}`;
+  return end ? `until ${end}` : '';
+}
+
+// A project's changes, then its other work in a section for each kind. The
+// changes get a heading of their own only when other work follows them.
+function renderGroup(group) {
+  const parts = [`<h4>${escapeHtml(group.label)}</h4>`];
+  if (group.items.length) {
+    const items = group.items
+      .map(
+        (item) =>
+          `<li><a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a><span class="id">${escapeHtml(item.id)}</span></li>`,
+      )
+      .join('\n');
+    if (group.other.length) parts.push('<h5>Code changes</h5>');
+    parts.push(`<ul>\n${items}\n</ul>`);
+  }
+  for (const kind of group.other) {
+    const entries = kind.entries
+      .map((entry) => {
+        const times = entryTimes(entry);
+        return `<li>${escapeHtml(entry.text)}${times ? `<span class="id">${times}</span>` : ''}</li>`;
+      })
+      .join('\n');
+    parts.push(`<h5>${escapeHtml(kind.label)}</h5><ul>\n${entries}\n</ul>`);
+  }
+  return `<div class="repo">${parts.join('')}</div>`;
+}
+
 function renderDay(day) {
-  const groups = day.groups
-    .map((group) => {
-      const items = group.items
-        .map(
-          (item) =>
-            `<li><a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a><span class="id">${escapeHtml(item.id)}</span></li>`,
-        )
-        .join('\n');
-      return `<div class="repo"><h4>${escapeHtml(group.label)}</h4><ul>\n${items}\n</ul></div>`;
-    })
-    .join('\n');
+  const groups = day.groups.map(renderGroup).join('\n');
   // A day with only other work has no lines of code, and has times only when
   // its activities recorded them.
   let summary = renderStats(day);
@@ -161,24 +187,13 @@ function renderDay(day) {
         : `First activity ${day.firstActivity} · Last activity ${day.lastActivity}`;
     summary += `<p class="times">${times}</p>`;
   }
-  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${summary}\n${groups}${renderActivities(day.activities)}\n</section>`;
-}
-
-function renderActivities(activities) {
-  if (!activities.length) return '';
-  const items = activities
-    .map(
-      (activity) =>
-        `<li><span class="kind">${escapeHtml(activity.label)}</span><span>${escapeHtml(activity.project)}: ${escapeHtml(activity.text)}</span></li>`,
-    )
-    .join('\n');
-  return `\n<div class="repo other"><h4>Other work</h4><ul>\n${items}\n</ul></div>`;
+  return `<section class="day" id="d${day.date}"><h3>${escapeHtml(day.label)}</h3>${summary}\n${groups}\n</section>`;
 }
 
 // "12 changes over 5 days", or "12 changes and 3 other activities over 6 days".
 export function pageSummary(days) {
-  const changes = days.reduce((sum, day) => sum + day.groups.reduce((n, group) => n + group.items.length, 0), 0);
-  const activities = days.reduce((sum, day) => sum + day.activities.length, 0);
+  const changes = days.reduce((sum, day) => sum + changeCount(day), 0);
+  const activities = days.reduce((sum, day) => sum + activityCount(day), 0);
   const parts = [`${changes} ${plural(changes, 'change')}`];
   if (activities) parts.push(`${activities} other ${activities === 1 ? 'activity' : 'activities'}`);
   return `${parts.join(' and ')} over ${days.length} ${plural(days.length, 'day')}`;

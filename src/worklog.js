@@ -77,15 +77,50 @@ export function projectIndex(repo, files, branch) {
   return index + 1;
 }
 
-// Groups activity into work days (newest first; see workDayKey), each with its items grouped by
-// repo, and by project within a repo, in config order, its totals and the first and last activity time, and
-// then any other work from the activities file. Each activity counts as a task
+// The group of a day that other work for a project joins: the repo or
+// project of that name in the config (ignoring case), or else a group of its
+// own after them, in the order its project first appears in the file.
+function activityGroups(repos, activities) {
+  const groups = new Map();
+  for (const [repoIndex, repo] of repos.entries()) {
+    for (const [index, label] of [repo.label, ...repo.projects.map((project) => project.label)].entries()) {
+      const key = label.toLowerCase();
+      if (!groups.has(key)) groups.set(key, { key: `${repo.fullName.toLowerCase()}\n${index}`, repo: repo.fullName, label, order: [repoIndex, index] });
+    }
+  }
+  for (const [index, activity] of activities.entries()) {
+    const key = activity.project.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { key: `\n${key}`, repo: null, label: activity.project, order: [Infinity, index] });
+  }
+  return groups;
+}
+
+// The projects of other work that match no repo or project in the config, so
+// each shows under a heading of its own.
+export function unmatchedProjects(activities, config) {
+  const known = activityGroups(config.repos, []);
+  const unmatched = new Map();
+  for (const { project } of activities) {
+    const key = project.toLowerCase();
+    if (!known.has(key) && !unmatched.has(key)) unmatched.set(key, project);
+  }
+  return [...unmatched.values()];
+}
+
+// Groups activity into work days (newest first; see workDayKey), each with its
+// changes grouped by repo, and by project within a repo, in config order, its
+// totals and the first and last activity time. Other work from the activities
+// file joins the group of its project (see activityGroups), split by kind in
+// the order of ACTIVITY_KINDS, each entry with its start and end clock times
+// and the timed ones first by start time, its first letter a capital as in
+// the titles of changes. Each activity counts as a task
 // completed, but has no lines of code, and its optional start and end times
 // count towards the day's activity times.
 export function buildDays(items, config, activities = []) {
   const { timeZone, since, repos, dayStartsAt } = config;
   const workDay = (time) => workDayKey(time, timeZone, dayStartsAt);
   const repoOrder = new Map(repos.map((repo, index) => [repo.fullName.toLowerCase(), index]));
+  const projectGroups = activityGroups(repos, activities);
   const days = new Map();
   const dayFor = (key) => {
     if (!days.has(key)) days.set(key, { date: key, items: [], times: [], activities: [] });
@@ -102,7 +137,7 @@ export function buildDays(items, config, activities = []) {
   for (const activity of activities) {
     if (since && activity.date < since) continue;
     const day = dayFor(activity.date);
-    day.activities.push({ ...activity, label: ACTIVITY_KINDS[activity.kind] });
+    day.activities.push(activity);
     // A time only counts on the activity's own work day, so work that ran
     // past the start of the next one cannot give a day a time from another.
     for (const time of [activity.start, activity.end]) {
@@ -118,22 +153,43 @@ export function buildDays(items, config, activities = []) {
     }
   }
 
+  const kinds = Object.keys(ACTIVITY_KINDS);
   return [...days.values()]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .map((day) => {
       const times = day.times.map((time) => Date.parse(time)).sort((a, b) => a - b);
       const groups = new Map();
+      const groupFor = (key, make) => {
+        if (!groups.has(key)) groups.set(key, { ...make(), items: [], other: [] });
+        return groups.get(key);
+      };
       for (const item of [...day.items].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))) {
         const repoIndex = repoOrder.get(item.repo.toLowerCase()) ?? Infinity;
         const repo = repos[repoIndex];
         const project = projectIndex(repo, item.files, item.branch);
-        const key = `${item.repo.toLowerCase()}\n${project}`;
-        if (!groups.has(key)) {
-          const label = project ? repo.projects[project - 1].label : (repo?.label ?? item.repo);
-          groups.set(key, { repo: item.repo, label, order: [repoIndex, project], items: [] });
-        }
+        const group = groupFor(`${item.repo.toLowerCase()}\n${project}`, () => ({
+          repo: item.repo,
+          label: project ? repo.projects[project - 1].label : (repo?.label ?? item.repo),
+          order: [repoIndex, project],
+        }));
         const { files, branch, ...shown } = item;
-        groups.get(key).items.push({ ...shown, title: cleanTitle(item.title) });
+        group.items.push({ ...shown, title: cleanTitle(item.title) });
+      }
+      const timed = (activity) => (activity.start ? Date.parse(activity.start) : Infinity);
+      for (const activity of [...day.activities].sort((a, b) => timed(a) - timed(b) || 0)) {
+        const { key, ...made } = projectGroups.get(activity.project.toLowerCase());
+        const group = groupFor(key, () => made);
+        let kind = group.other.find((section) => section.kind === activity.kind);
+        if (!kind) {
+          kind = { kind: activity.kind, label: ACTIVITY_KINDS[activity.kind], entries: [] };
+          group.other.push(kind);
+          group.other.sort((a, b) => kinds.indexOf(a.kind) - kinds.indexOf(b.kind));
+        }
+        kind.entries.push({
+          text: activity.text[0].toUpperCase() + activity.text.slice(1),
+          start: activity.start ? clockTime(activity.start, timeZone) : null,
+          end: activity.end ? clockTime(activity.end, timeZone) : null,
+        });
       }
       return {
         date: day.date,
@@ -145,7 +201,6 @@ export function buildDays(items, config, activities = []) {
         groups: [...groups.values()]
           .sort((a, b) => a.order[0] - b.order[0] || a.order[1] - b.order[1])
           .map(({ order, ...group }) => group),
-        activities: day.activities,
       };
     });
 }

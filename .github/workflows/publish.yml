@@ -71,7 +71,8 @@ jobs:
           GITHUB_WORKLOG_PUBLISH_TOKEN: ${{ github.token }}
           WORKLOG_PASSWORD: ${{ secrets.WORKLOG_PASSWORD }}
           WORKLOG_CONFIG: ${{ secrets.WORKLOG_CONFIG }}
-          WORKLOG_ACTIVITIES: ${{ secrets.WORKLOG_ACTIVITIES }}
+          # Older setups kept the other work in a secret, which is too small.
+          HAS_OLD_ACTIVITIES: ${{ secrets.WORKLOG_ACTIVITIES != '' }}
         run: |
           set -euo pipefail
           for name in GH_TOKEN WORKLOG_PASSWORD; do
@@ -85,22 +86,21 @@ jobs:
           # column, never the contents.
           printf '%s' "$WORKLOG_CONFIG" | jq -e 'type == "object"' > /dev/null ||
             { echo "::error::WORKLOG_CONFIG is not a JSON object."; exit 1; }
-          if [ -n "$WORKLOG_ACTIVITIES" ]; then
-            printf '%s' "$WORKLOG_ACTIVITIES" | jq -e 'type == "array"' > /dev/null ||
-              { echo "::error::WORKLOG_ACTIVITIES is not a JSON list."; exit 1; }
+          if [ "$HAS_OLD_ACTIVITIES" = true ]; then
+            echo "::warning::The WORKLOG_ACTIVITIES secret is no longer used: publish now stores your other work, encrypted, with the page. Delete the secret."
           fi
           # GitHub hides whole secrets in the log, but not the pieces of a JSON
-          # one, so hide each private text value in them too.
-          private='.. | objects | to_entries[] | select(.key | IN("kind", "date", "start", "end", "timeZone", "dayStartsAt", "since", "requireActivityTimesFrom") | not) | .value | .. | strings'
-          { printf '%s' "$WORKLOG_CONFIG" | jq -r "$private"
-            [ -z "$WORKLOG_ACTIVITIES" ] || printf '%s' "$WORKLOG_ACTIVITIES" | jq -r "$private"
-          } | while IFS= read -r line; do
+          # one, so hide each private text value in it too.
+          private='.. | objects | to_entries[] | select(.key | IN("timeZone", "dayStartsAt", "since", "requireActivityTimesFrom") | not) | .value | .. | strings'
+          printf '%s' "$WORKLOG_CONFIG" | jq -r "$private" | while IFS= read -r line; do
             [ -n "$line" ] && echo "::add-mask::$line"
           done
           # "activities" in the config is a path on your own machine; here the
-          # other work comes from its own secret instead, or none without it.
+          # other work is the encrypted copy that the last publish stored with
+          # the page, which github-worklog unlocks with the password and hides
+          # in the log itself.
           node bin/github-worklog.js publish \
             --config <(printf '%s' "$WORKLOG_CONFIG" | jq 'del(.activities)') \
             --password-file <(printf '%s' "$WORKLOG_PASSWORD") \
-            --activities <(printf '%s' "${WORKLOG_ACTIVITIES:-[]}") \
+            --stored-activities \
             --repo "$GITHUB_REPOSITORY"

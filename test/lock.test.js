@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { encrypt, ITERATIONS, lockPage, saltFor } from '../src/lock.js';
+import { decrypt as decryptInNode, encrypt, ITERATIONS, lockActivities, lockPage, saltFor, unlockActivities } from '../src/lock.js';
 
 // Load the exact script the browser runs so the tests decrypt with it.
 vm.runInThisContext(readFileSync(new URL('../src/unlock-client.js', import.meta.url), 'utf8'));
@@ -55,4 +55,33 @@ test('keeps the salt per author so remembered devices survive a refresh, with a 
   // A key remembered from the first build opens the second.
   const key = await deriveKey('pw', first);
   assert.equal(await decrypt(key, second), 'same');
+});
+
+test('stores other work of any size encrypted, and unlocks it only with the same password', async () => {
+  // Far more than the 48 KB a GitHub Actions secret can hold.
+  const activities = Array.from({ length: 600 }, (_, i) => ({
+    date: '2026-10-14',
+    project: `Acme project ${i}`,
+    kind: 'testing',
+    text: `ran test round ${i} of the private café ☕ checkout with every staff member`,
+    start: '2026-10-14T09:00:00+01:00',
+  }));
+  const stored = await lockActivities(activities, 'quiet otter lantern', { iterations: 1000 });
+  assert.ok(Buffer.byteLength(stored) > 48 * 1024);
+  assert.doesNotMatch(stored, /Acme|checkout|café/);
+  assert.equal(JSON.parse(stored).format, 'github-worklog activities');
+
+  assert.deepEqual(await unlockActivities(stored, 'quiet otter lantern'), activities);
+  await assert.rejects(unlockActivities(stored, 'quiet otter lanterns'), { name: 'OperationError' });
+  await assert.rejects(unlockActivities('{"v":1}', 'quiet otter lantern'), /not stored by github-worklog/);
+  // Each store has its own salt and IV.
+  const again = JSON.parse(await lockActivities(activities, 'quiet otter lantern', { iterations: 1000 }));
+  assert.notEqual(again.salt, JSON.parse(stored).salt);
+  assert.notEqual(again.iv, JSON.parse(stored).iv);
+});
+
+test('decrypts in Node what the page script would decrypt', async () => {
+  const payload = await encrypt(SECRET, 'pw', { salt: await saltFor('dev'), iterations: 1000 });
+  assert.equal(await decryptInNode(payload, 'pw'), SECRET);
+  assert.equal(await decrypt(await deriveKey('pw', payload), payload), SECRET);
 });

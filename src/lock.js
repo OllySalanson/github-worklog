@@ -42,6 +42,10 @@ label.remember input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color:
 `;
 
 const toBase64 = (bytes) => Buffer.from(bytes).toString('base64');
+const fromBase64 = (text) => new Uint8Array(Buffer.from(text, 'base64'));
+
+// Marks the file of other work that publish stores, encrypted, with the page.
+export const STORED_ACTIVITIES_FORMAT = 'github-worklog activities';
 
 // A stable salt per author keeps "remember me" working across refreshes,
 // while a fresh random IV on every build keeps AES-GCM safe.
@@ -50,18 +54,29 @@ export async function saltFor(author) {
   return new Uint8Array(digest).slice(0, 16);
 }
 
-export async function encrypt(plaintext, password, { salt, iterations = ITERATIONS }) {
+async function deriveKey(password, salt, iterations, usage) {
   const material = await subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-  const key = await subtle.deriveKey(
+  return subtle.deriveKey(
     { name: 'PBKDF2', hash: 'SHA-256', salt, iterations },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['encrypt'],
+    [usage],
   );
+}
+
+export async function encrypt(plaintext, password, { salt, iterations = ITERATIONS }) {
+  const key = await deriveKey(password, salt, iterations, 'encrypt');
   const iv = webcrypto.getRandomValues(new Uint8Array(12));
   const data = await subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
   return { v: 1, iterations, salt: toBase64(salt), iv: toBase64(iv), data: toBase64(new Uint8Array(data)) };
+}
+
+// Rejects when the password is wrong or the data was changed.
+export async function decrypt(payload, password) {
+  const key = await deriveKey(password, fromBase64(payload.salt), payload.iterations, 'decrypt');
+  const data = await subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(payload.iv) }, key, fromBase64(payload.data));
+  return new TextDecoder().decode(data);
 }
 
 // The lock page deliberately says nothing about whose page it is: everything
@@ -98,4 +113,21 @@ export function renderLockPage(payload) {
 export async function lockPage(html, password, { author, iterations } = {}) {
   const payload = await encrypt(html, password, { salt: await saltFor(author), iterations });
   return renderLockPage(payload);
+}
+
+// The other work, encrypted with the page password, for publish to keep with
+// the page so a rebuild elsewhere (such as the evening run in GitHub Actions)
+// has every entry. Nothing needs to remember this key, so the salt is random.
+export async function lockActivities(activities, password, { iterations } = {}) {
+  const salt = webcrypto.getRandomValues(new Uint8Array(16));
+  const payload = await encrypt(JSON.stringify(activities), password, { salt, iterations });
+  return `${JSON.stringify({ format: STORED_ACTIVITIES_FORMAT, ...payload })}\n`;
+}
+
+// The list stored by lockActivities, still to be checked by parseActivities.
+// Rejects when the password is not the one it was stored with.
+export async function unlockActivities(text, password) {
+  const payload = JSON.parse(text);
+  if (payload?.format !== STORED_ACTIVITIES_FORMAT || payload.v !== 1) throw new Error('not stored by github-worklog');
+  return JSON.parse(await decrypt(payload, password));
 }

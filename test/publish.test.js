@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { enablePages, MARKER_FILE, publish } from '../src/publish.js';
+import { ACTIVITIES_FILE, enablePages, fetchStoredActivities, MARKER_FILE, publish } from '../src/publish.js';
 import { fakeGh } from './helpers.js';
 
 const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -65,4 +65,17 @@ test('enablePages passes on errors other than "not set up yet"', async () => {
     throw new Error('gh failed: Forbidden (HTTP 403)');
   };
   await assert.rejects(enablePages({ repo: 'dev/site', gh }), /HTTP 403/);
+});
+
+test('keeps the stored other work with the page, and reads it back', async () => {
+  const remote = await bareRemote();
+  const { gh } = fakeGh();
+  assert.equal(await fetchStoredActivities({ repo: 'dev/site', remote }), null);
+
+  await publish({ repo: 'dev/site', lockedHtml: 'page', remote, gh });
+  assert.equal(await fetchStoredActivities({ repo: 'dev/site', remote }), null);
+
+  await publish({ repo: 'dev/site', lockedHtml: 'page', lockedActivities: 'locked list\n', remote, gh });
+  assert.deepEqual(branchFiles(remote), ['.github-worklog', '.nojekyll', ACTIVITIES_FILE, 'index.html']);
+  assert.equal(await fetchStoredActivities({ repo: 'dev/site', remote }), 'locked list\n');
 });

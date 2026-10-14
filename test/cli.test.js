@@ -34,6 +34,8 @@ async function setup(config = {}) {
   const output = [];
   const deps = {
     gh: fake.gh,
+    // Not the environment the tests run in, which in CI says GitHub Actions.
+    env: {},
     out: (line) => output.push(line),
     err: (line) => output.push(line),
     now: () => new Date('2026-09-25T12:00:00Z'),

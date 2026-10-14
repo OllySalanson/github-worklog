@@ -68,7 +68,8 @@ test('stores other work of any size encrypted, and unlocks it only with the same
   }));
   const stored = await lockActivities(activities, 'quiet otter lantern', { iterations: 1000 });
   assert.ok(Buffer.byteLength(stored) > 48 * 1024);
-  assert.doesNotMatch(stored, /Acme|checkout|café/);
+  // Base64 has no spaces, so random ciphertext cannot match these by chance.
+  assert.doesNotMatch(stored, /Acme project|café ☕ checkout|every staff/);
   assert.equal(JSON.parse(stored).format, 'github-worklog activities');
 
   assert.deepEqual(await unlockActivities(stored, 'quiet otter lantern'), activities);

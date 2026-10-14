@@ -51,7 +51,7 @@ You need [Node.js](https://nodejs.org) 20 or newer, `git`, and the [GitHub CLI](
 
    The first publish turns on GitHub Pages for the repository. The page appears at `https://<owner>.github.io/<repo>/` within a minute or two.
 
-5. **Refresh it** whenever you like by running the same command again. It always rebuilds the whole history from GitHub, so there is nothing to keep in sync. To refresh on a schedule without your computer, see [Publish every evening with GitHub Actions](#publish-every-evening-with-github-actions).
+5. **Refresh it** whenever you like by running the same command again. It always rebuilds the whole history from GitHub, so there is nothing to keep in sync. Each publish also stores your [other work](#other-work), encrypted with the same password, next to the page, so the evening run in GitHub Actions has every entry without any extra step. To refresh on a schedule without your computer, see [Publish every evening with GitHub Actions](#publish-every-evening-with-github-actions).
 
 To check the page before publishing, `build` writes the same encrypted page to a local file instead. Open it in a browser and unlock it with your password:
 
@@ -70,7 +70,7 @@ The [Publish work log](.github/workflows/publish.yml) workflow rebuilds and publ
 
 GitHub's schedules run in UTC, so the workflow is scheduled at both 21:00 and 22:00 UTC, and only the run that is 22:00 in London goes ahead (21:00 UTC during British Summer Time, 22:00 UTC in winter). GitHub can start scheduled runs some minutes late when it is busy. To use another time or time zone, change the `cron` lines and the check in the **When** step.
 
-1. **Turn on GitHub Pages first**, either by running `publish` once from your machine or under **Settings > Pages** (deploy from the `gh-pages` branch). The workflow's own token can update the page but is not allowed to switch Pages on.
+1. **Run `publish` once from your machine first.** It turns on GitHub Pages, which the workflow's own token is not allowed to do, and stores your [other work](#other-work), encrypted, next to the page, where the workflow reads it. Until then the workflow fails without publishing.
 
 2. **Make a read-only token** for reading your repositories. On GitHub, go to **Settings > Developer settings > Personal access tokens > Fine-grained tokens > Generate new token**, and choose:
 
@@ -88,14 +88,14 @@ GitHub's schedules run in UTC, so the workflow is scheduled at both 21:00 and 22
    | `WORKLOG_TOKEN` | yes | The fine-grained token from step 2. |
    | `WORKLOG_PASSWORD` | yes | The page password. |
    | `WORKLOG_CONFIG` | yes | The whole [config](#config) file. Its `publishTo` and `activities` are ignored here. |
-   | `WORKLOG_ACTIVITIES` | no | The whole [other work](#other-work) file. Leave it unset for no other work. |
 
    ```sh
    gh secret set WORKLOG_TOKEN --repo your-name/github-worklog < token-file
    gh secret set WORKLOG_PASSWORD --repo your-name/github-worklog < ~/.config/github-worklog/password
    gh secret set WORKLOG_CONFIG --repo your-name/github-worklog < ~/.config/github-worklog/work.json
-   gh secret set WORKLOG_ACTIVITIES --repo your-name/github-worklog < ~/.config/github-worklog/activities.json
    ```
+
+   Your other work needs no secret: the workflow uses the copy your last `publish` stored. Earlier versions kept it in a `WORKLOG_ACTIVITIES` secret, which GitHub caps at 48 KB; once you have published from your machine with this version, delete that secret (`gh secret delete WORKLOG_ACTIVITIES --repo your-name/github-worklog`). Until you do, each run warns that it is no longer used.
 
    Secrets are not shared with forks, and a repository without `WORKLOG_CONFIG` skips the run with a note.
 
@@ -103,11 +103,12 @@ GitHub's schedules run in UTC, so the workflow is scheduled at both 21:00 and 22
 
 The workflow is careful with what it is given:
 
-- The secrets only ever live in environment variables and reach github-worklog through pipes, so nothing private is written to the runner's disk, cached or kept as an artifact. Only the encrypted page leaves the run, as it does from your machine.
-- GitHub hides secrets in the run's log. It cannot recognise the separate parts of a JSON secret, so the workflow also hides every private text value in the config and other work (titles, names, repositories and descriptions) before running anything.
+- The secrets only ever live in environment variables and reach github-worklog through pipes, so nothing private is written to the runner's disk, cached or kept as an artifact. The stored other work is unlocked in memory. Only the encrypted page and other work leave the run, as they do from your machine.
+- GitHub hides secrets in the run's log. It cannot recognise the separate parts of a JSON secret, so the workflow also hides every private text value in the config (titles, names and repositories) before running anything, and github-worklog hides the project and words of every piece of other work as soon as it has unlocked them.
 - Reading uses your read-only token. Publishing uses the run's own `GITHUB_TOKEN`, which can only write to this repository (`contents: write`) and read its Pages setting (`pages: read`).
-- Because your other work now comes from the `WORKLOG_ACTIVITIES` secret, update that secret when you add to your local file, or the evening run shows the older list.
-- With [`requireActivityTimesFrom`](#keeping-activity-times-complete) in `WORKLOG_CONFIG`, the evening run fails, publishing nothing, when the `WORKLOG_ACTIVITIES` secret holds other work from that date without a `start` time. The last published page stays up; add the times locally and update the secret.
+- The evening run shows the other work from your last `publish`, so publish from your machine after adding to your local file. The evening run stores the same list again, however long it grows.
+- If the stored other work is missing or was stored with another password (for example after changing `WORKLOG_PASSWORD`), the evening run fails, publishing nothing, rather than leave entries out. The last published page stays up; publish from your machine with the current password to store it again.
+- With [`requireActivityTimesFrom`](#keeping-activity-times-complete) in `WORKLOG_CONFIG`, the evening run fails, publishing nothing, when the stored other work has entries from that date without a `start` time. The last published page stays up; add the times locally and publish again.
 
 ## Config
 
@@ -184,7 +185,7 @@ Much of the work behind a project never reaches GitHub: planning the next stages
 
 There is a fuller example in [examples/activities.example.json](examples/activities.example.json).
 
-Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date` (or, with [`dayStartsAt`](#work-that-runs-past-midnight), within that work day). A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published inside the encrypted page, so keep it out of git.
+Each day lists its other work in an **Other work** group after the code changes, in the order of the file. Each piece of other work counts as a task completed, but never towards lines of code. Its `start` and `end` times, when given, count towards the day's first and last activity times, as long as they fall on its `date` (or, with [`dayStartsAt`](#work-that-runs-past-midnight), within that work day). A day with only other work still appears, with its task count, no line totals, and activity times only if its entries have them. Like the config, the file is read on your machine and only ever published encrypted, so keep it out of git: inside the page, and as a copy encrypted with the same password that the [evening run](#publish-every-evening-with-github-actions) reads back (`--stored-activities`). The copy has no size limit.
 
 ### Work that runs past midnight
 
@@ -200,7 +201,7 @@ Not publishing: 1 piece of other work has no "start" time, and "requireActivityT
 Give each one a "start" (and an "end" if you know it) as an ISO time with its offset, such as "start": "2026-09-24T14:05:00+01:00", in /home/you/.config/github-worklog/activities.json. Then publish again.
 ```
 
-`end` stays optional, and entries before the date are left alone, so older entries without times need no changes. `build` writes the page anyway and prints the same list as a warning. When it runs in GitHub Actions, where the log of a public repository is public, the list leaves out each entry's words and names it by its number in the file, its date and its project, and points to the `WORKLOG_ACTIVITIES` secret.
+`end` stays optional, and entries before the date are left alone, so older entries without times need no changes. `build` writes the page anyway and prints the same list as a warning. When it runs in GitHub Actions, where the log of a public repository is public, the list leaves out each entry's words and names it by its number in the file, its date and its project.
 
 ## How the password lock works
 
@@ -212,7 +213,7 @@ github-worklog renders the page in memory and encrypts it before anything is wri
 - **Remember me on this device** saves the derived key (not the password) in the browser's local storage, so that device opens the page straight away, even after you refresh it. The **Lock** button on the page forgets it again. Changing the password makes every remembered device ask again.
 - The password is read from a file, never printed or logged, and never passed on the command line, so it does not end up in your shell history.
 
-**What is published:** the `gh-pages` branch of the publishing repository holds exactly one commit with three files: the encrypted `index.html`, an empty `.nojekyll`, and a `.github-worklog` marker. Each publish replaces that commit, so old versions do not build up. Your config, your password and the unencrypted page never enter git on any branch. To protect a `gh-pages` branch you already use for something else, github-worklog refuses to replace one it did not create unless you pass `--force`.
+**What is published:** the `gh-pages` branch of the publishing repository holds exactly one commit with four files: the encrypted `index.html`, `activities.enc.json` (your other work, encrypted with the same password, possibly an empty list), an empty `.nojekyll`, and a `.github-worklog` marker. Each publish replaces that commit, so old versions do not build up. Your config, your password, the unencrypted page and your other work in plain text never enter git on any branch. `activities.enc.json` holds nothing that is not already inside the encrypted page; it is encrypted the same way, with its own random salt. To protect a `gh-pages` branch you already use for something else, github-worklog refuses to replace one it did not create unless you pass `--force`.
 
 ### Limits
 
@@ -238,8 +239,8 @@ The tests use Node's built-in test runner and need no installs. They run the sam
 | [src/activities.js](src/activities.js) | Reads and checks the optional file of other work. |
 | [src/worklog.js](src/worklog.js) | Groups activity and other work into days and tidies titles. |
 | [src/render.js](src/render.js) | Renders the page. |
-| [src/lock.js](src/lock.js), [src/unlock-client.js](src/unlock-client.js) | Encrypts the page and builds the lock screen that decrypts it. |
-| [src/publish.js](src/publish.js) | Pushes to `gh-pages` and turns on GitHub Pages. |
+| [src/lock.js](src/lock.js), [src/unlock-client.js](src/unlock-client.js) | Encrypts the page and the stored other work, and builds the lock screen that decrypts the page. |
+| [src/publish.js](src/publish.js) | Pushes to `gh-pages`, reads back the stored other work, and turns on GitHub Pages. |
 | [.github/workflows/publish.yml](.github/workflows/publish.yml) | Publishes every evening from GitHub Actions. |
 
 ## License

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { run } from '../src/cli.js';
+import { unlockActivities } from '../src/lock.js';
 import { runGit } from '../src/publish.js';
 import { commit, fakeGh, pr } from './helpers.js';
 
@@ -107,7 +108,10 @@ test('publish pushes the encrypted page to gh-pages and turns on Pages', async (
   assert.doesNotMatch(published, /Acme|checkout/);
   assert.match(await unlock(published), /Add a checkout page/);
   const files = execFileSync('git', ['ls-tree', '-r', '--name-only', 'gh-pages'], { cwd: remote, encoding: 'utf8' });
-  assert.doesNotMatch(files, /config|password|\.json/);
+  assert.deepEqual(files.trim().split('\n'), ['.github-worklog', '.nojekyll', 'activities.enc.json', 'index.html']);
+  // With no other work, an empty list is stored, still encrypted.
+  const stored = execFileSync('git', ['show', 'gh-pages:activities.enc.json'], { cwd: remote, encoding: 'utf8' });
+  assert.deepEqual(await unlockActivities(stored, PASSWORD), []);
 });
 
 test('publish can push with its own token while reading with the GitHub CLI login', async () => {
@@ -188,9 +192,12 @@ test('publish refuses other work without a start time from the date the config a
   // In GitHub Actions the log may be public, so it names entries without their words.
   output.length = 0;
   assert.equal(await run(['publish', '--config', configPath, '--password-file', passwordPath], { ...deps, git, env: { GITHUB_ACTIONS: 'true' } }), 1);
-  assert.match(output.join('\n'), /^  - activity 2, 2026-09-22, Warehouse$/m);
-  assert.match(output.join('\n'), /in your activities file and the WORKLOG_ACTIVITIES secret\. Then publish again\.$/m);
-  assert.doesNotMatch(output.join('\n'), /reviewed|guide|activities\.json/);
+  // GitHub hides the words named in ::add-mask:: lines, and the lines themselves.
+  const logged = output.filter((line) => !line.startsWith('::add-mask::')).join('\n');
+  assert.ok(output.includes('::add-mask::reviewed all 28 staff bug reports from the first week'));
+  assert.match(logged, /^  - activity 2, 2026-09-22, Warehouse$/m);
+  assert.match(logged, /in your activities file on your machine\. Then publish again\.$/m);
+  assert.doesNotMatch(logged, /reviewed|guide|activities\.json/);
 
   // build still writes the page, with a warning.
   output.length = 0;
@@ -245,6 +252,97 @@ test('with "dayStartsAt", work past midnight stays with the day it began, alongs
   const html = await unlock(await readFile(out, 'utf8'));
   assert.match(html, /Thursday 24 September 2026[\s\S]*First activity 15:00 · Last activity 01:40/);
   assert.doesNotMatch(html, /id="d2026-09-25"/);
+});
+
+// A publish to a local bare repo standing in for github.com/dev/worklog.
+async function localRemote() {
+  const remote = await mkdtemp(join(tmpdir(), 'worklog-remote-'));
+  execFileSync('git', ['init', '--quiet', '--bare', remote]);
+  const git = (args, options) => runGit(args.map((arg) => (arg === 'https://github.com/dev/worklog.git' ? remote : arg)), options);
+  return { remote, git };
+}
+
+// More other work than the 48 KB a GitHub Actions secret can hold.
+const manyActivities = (count) =>
+  Array.from({ length: count }, (_, i) => ({
+    date: `2026-09-${String(1 + (i % 24)).padStart(2, '0')}`,
+    project: 'Warehouse',
+    kind: 'testing',
+    text: `test round ${i + 1} of the staff app, going through every screen with the whole team`,
+    start: `2026-09-${String(1 + (i % 24)).padStart(2, '0')}T10:00:00+01:00`,
+  }));
+
+test('publish stores the other work with the page, and a later publish with --stored-activities keeps every entry', async () => {
+  const { dir, passwordPath, output, deps } = await setup();
+  const { remote, git } = await localRemote();
+  const activities = manyActivities(500);
+  const activitiesText = JSON.stringify(activities);
+  assert.ok(Buffer.byteLength(activitiesText) > 48 * 1024);
+  await writeFile(join(dir, 'activities.json'), activitiesText);
+  const configPath = join(dir, 'with-activities.json');
+  await writeFile(configPath, JSON.stringify({ title: 'T', author: 'dev', repos: ['acme/app'], publishTo: 'dev/worklog', activities: 'activities.json' }));
+
+  assert.equal(await run(['publish', '--config', configPath, '--password-file', passwordPath], { ...deps, git, env: {} }), 0, output.join('\n'));
+  const stored = execFileSync('git', ['show', 'gh-pages:activities.enc.json'], { cwd: remote, encoding: 'utf8' });
+  assert.doesNotMatch(stored, /Warehouse|test round/);
+  assert.deepEqual(await unlockActivities(stored, PASSWORD), activities);
+  const firstPage = await unlock(execFileSync('git', ['show', 'gh-pages:index.html'], { cwd: remote, encoding: 'utf8' }));
+
+  // The evening run: no activities file, as in GitHub Actions.
+  const bareConfig = join(dir, 'no-activities.json');
+  await writeFile(bareConfig, JSON.stringify({ title: 'T', author: 'dev', repos: ['acme/app'] }));
+  output.length = 0;
+  const env = { GITHUB_ACTIONS: 'true' };
+  const code = await run(
+    ['publish', '--config', bareConfig, '--password-file', passwordPath, '--stored-activities', '--repo', 'dev/worklog'],
+    { ...deps, git, env },
+  );
+  assert.equal(code, 0, output.join('\n'));
+  assert.match(output.join('\n'), /^Using the other work stored with the page in dev\/worklog \(500 entries\)\.$/m);
+  // The words of the other work are hidden in the Actions log.
+  assert.ok(output.includes('::add-mask::Warehouse'));
+  assert.ok(output.includes(`::add-mask::${activities[499].text}`));
+  const secondPage = await unlock(execFileSync('git', ['show', 'gh-pages:index.html'], { cwd: remote, encoding: 'utf8' }));
+  assert.equal(secondPage, firstPage);
+  for (let i = 1; i <= 500; i++) assert.ok(secondPage.includes(`test round ${i} of the staff app`), `entry ${i}`);
+  const restored = execFileSync('git', ['show', 'gh-pages:activities.enc.json'], { cwd: remote, encoding: 'utf8' });
+  assert.notEqual(restored, stored);
+  assert.deepEqual(await unlockActivities(restored, PASSWORD), activities);
+
+  // build can use the stored list too.
+  output.length = 0;
+  const out = join(dir, 'site.html');
+  assert.equal(
+    await run(['build', '--config', bareConfig, '--password-file', passwordPath, '--stored-activities', '--repo', 'dev/worklog', '--out', out], { ...deps, git }),
+    0,
+    output.join('\n'),
+  );
+  assert.equal(await unlock(await readFile(out, 'utf8')), firstPage);
+});
+
+test('--stored-activities refuses rather than dropping other work it cannot read', async () => {
+  const { dir, configPath, passwordPath, output, deps } = await setup();
+  const { git } = await localRemote();
+  const args = ['publish', '--config', configPath, '--password-file', passwordPath, '--repo', 'dev/worklog'];
+
+  // Nothing published yet.
+  assert.equal(await run([...args, '--stored-activities'], { ...deps, git }), 1);
+  assert.match(output.at(-1), /^No other work is stored with the page in dev\/worklog yet\. Publish once from your machine/);
+
+  // Stored with another password.
+  const otherPassword = join(dir, 'other-password');
+  await writeFile(otherPassword, 'another long private passphrase\n');
+  assert.equal(await run(['publish', '--config', configPath, '--password-file', otherPassword, '--repo', 'dev/worklog'], { ...deps, git }), 0);
+  output.length = 0;
+  assert.equal(await run([...args, '--stored-activities'], { ...deps, git }), 1);
+  assert.match(output.at(-1), /^The other work stored with the page in dev\/worklog was stored with another password\./);
+  assert.doesNotMatch(output.join('\n'), /passphrase/);
+
+  // Asking for both sources, or for stored work without a repo.
+  assert.equal(await run([...args, '--stored-activities', '--activities', join(dir, 'a.json')], deps), 2);
+  assert.match(output.join('\n'), /Use either --activities or --stored-activities, not both/);
+  assert.equal(await run(['build', '--config', configPath, '--password-file', passwordPath, '--stored-activities'], deps), 2);
+  assert.match(output.join('\n'), /--stored-activities needs --repo/);
 });
 
 test('--repo overrides publishTo, and publish without either is refused', async () => {

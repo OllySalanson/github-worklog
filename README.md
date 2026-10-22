@@ -237,7 +237,7 @@ The tests use Node's built-in test runner and need no installs. They run the sam
 | --- | --- |
 | [src/cli.js](src/cli.js) | Command line: `build` and `publish`. |
 | [src/config.js](src/config.js) | Reads and checks the config and password files. |
-| [src/github.js](src/github.js) | Fetches pull requests and commits through `gh api graphql`. |
+| [src/github.js](src/github.js) | Fetches pull requests and commits through `gh api graphql`, asking again when GitHub fails briefly. |
 | [src/activities.js](src/activities.js) | Reads and checks the optional file of other work. |
 | [src/worklog.js](src/worklog.js) | Groups activity and other work into days and tidies titles. |
 | [src/render.js](src/render.js) | Renders the page. |

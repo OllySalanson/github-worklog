@@ -1,6 +1,7 @@
 // A stand-in for the gh CLI that answers the GraphQL queries github-worklog
 // makes from canned data, the REST calls for the files of a commit from
 // commitFiles, and the Pages REST calls from a small state object.
+// commitPageSize pages the commits of each pull request.
 export function fakeGh({
   login = 'dev',
   pullRequests = {},
@@ -8,6 +9,7 @@ export function fakeGh({
   commitFiles = {},
   pageSize = Infinity,
   filePageSize = Infinity,
+  commitPageSize = Infinity,
   pages = null,
 } = {}) {
   const calls = [];
@@ -30,17 +32,23 @@ export function fakeGh({
         nodes: list.slice(from, from + size),
       });
       const filesPage = (files, from) => page(files.map((path) => ({ path })), filePageSize, from);
+      const commitsPage = (commits, from) => page(commits.map((commit) => ({ commit })), commitPageSize, from);
       if (fields.query.includes('pullRequests(')) {
         if (!(repo in pullRequests)) return JSON.stringify({ data: { repository: null } });
         const withFiles = fields.query.includes('files(');
-        const nodes = pullRequests[repo].map(({ changedFiles, headRefName, ...node }) =>
-          withFiles ? { ...node, headRefName, files: filesPage(changedFiles, 0) } : node,
-        );
+        const nodes = pullRequests[repo].map(({ changedFiles, headRefName, prCommits, ...node }) => ({
+          ...node,
+          commits: commitsPage(prCommits, 0),
+          ...(withFiles && { headRefName, files: filesPage(changedFiles, 0) }),
+        }));
         return JSON.stringify({ data: { repository: { pullRequests: page(nodes) } } });
       }
       if (fields.query.includes('pullRequest(')) {
         const found = pullRequests[repo].find((node) => node.number === Number(fields.number));
-        return JSON.stringify({ data: { repository: { pullRequest: { files: filesPage(found.changedFiles, start) } } } });
+        const pullRequest = fields.query.includes('files(')
+          ? { files: filesPage(found.changedFiles, start) }
+          : { commits: commitsPage(found.prCommits, start) };
+        return JSON.stringify({ data: { repository: { pullRequest } } });
       }
       if (fields.query.includes('history(')) {
         const list = commits[repo];
@@ -66,31 +74,47 @@ export function fakeGh({
   return { gh, calls, state };
 }
 
+// A merged pull request. Its commits are the commits it brought in (made with
+// commit below), plus one made up for each of commitTimes; mergeCommit is the
+// id of the commit merging or squashing it onto the default branch.
 export const pr = (
   number,
   title,
   mergedAt,
-  { author = 'dev', commitTimes = [], additions = 0, deletions = 0, files = [], branch = `work-${number}` } = {},
+  {
+    author = 'dev',
+    commits = [],
+    commitTimes = [],
+    mergeCommit = `merge${number}`,
+    additions = 0,
+    deletions = 0,
+    files = [],
+    branch = `work-${number}`,
+  } = {},
 ) => ({
   number,
   changedFiles: files,
   headRefName: branch,
+  prCommits: [
+    ...commits.map(({ oid, authoredDate, messageHeadline }) => ({ oid, authoredDate, messageHeadline })),
+    ...commitTimes.map((authoredDate, index) => ({ oid: `pr${number}c${index}`, authoredDate, messageHeadline: 'Work' })),
+  ],
+  mergeCommit: mergeCommit && { oid: mergeCommit },
   additions,
   deletions,
   title,
   url: `https://github.com/acme/app/pull/${number}`,
   mergedAt,
   author: { login: author },
-  commits: { nodes: commitTimes.map((authoredDate) => ({ commit: { authoredDate } })) },
 });
 
-export const commit = (oid, message, authoredDate, { parents = 1, prStates = [], additions = 0, deletions = 0 } = {}) => ({
+export const commit = (oid, message, authoredDate, { parents = 1, additions = 0, deletions = 0 } = {}) => ({
   oid,
   additions,
   deletions,
   url: `https://github.com/acme/app/commit/${oid}`,
   message,
+  messageHeadline: message.split('\n')[0],
   authoredDate,
   parents: { totalCount: parents },
-  associatedPullRequests: { nodes: prStates.map((state) => ({ state })) },
 });
